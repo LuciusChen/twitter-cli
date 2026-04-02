@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Iterable, List, Optional
 
-from .models import Author, BookmarkFolder, Metrics, Tweet, TweetMedia, UserProfile
+from .models import Author, BookmarkFolder, MediaVariant, Metrics, Tweet, TweetMedia, UserProfile
 from .timeutil import format_iso8601, format_local_time
 
 
@@ -36,8 +36,16 @@ def tweet_to_dict(tweet: Tweet) -> Dict[str, Any]:
             {
                 "type": media.type,
                 "url": media.url,
+                "previewUrl": media.preview_url,
                 "width": media.width,
                 "height": media.height,
+                "variants": [
+                    {
+                        "url": variant.url,
+                        "bitrate": variant.bitrate,
+                    }
+                    for variant in media.variants
+                ],
             }
             for media in tweet.media
         ],
@@ -110,8 +118,17 @@ def tweet_from_dict(data: Dict[str, Any]) -> Tweet:
             TweetMedia(
                 type=str(item.get("type") or ""),
                 url=str(item.get("url") or ""),
+                preview_url=str(item.get("previewUrl") or item.get("preview_url") or ""),
                 width=_optional_int(item.get("width")),
                 height=_optional_int(item.get("height")),
+                variants=[
+                    MediaVariant(
+                        url=str(variant.get("url") or ""),
+                        bitrate=_optional_int(variant.get("bitrate")),
+                    )
+                    for variant in (item.get("variants") or [])
+                    if isinstance(variant, dict) and variant.get("url")
+                ],
             )
             for item in media_data
             if isinstance(item, dict)

@@ -150,6 +150,12 @@ class TestExtractMedia:
         assert len(media) == 1
         assert media[0].type == "video"
         assert media[0].url == "https://high.mp4"
+        assert media[0].preview_url == "https://pbs.twimg.com/thumb.jpg"
+        assert [variant.url for variant in media[0].variants] == [
+            "https://high.mp4",
+            "https://low.mp4",
+        ]
+        assert [variant.bitrate for variant in media[0].variants] == [2176000, 832000]
 
     def test_no_media(self):
         assert _extract_media({}) == []
@@ -174,6 +180,8 @@ class TestExtractMedia:
         media = _extract_media(legacy)
         assert len(media) == 1
         assert media[0].type == "animated_gif"
+        assert media[0].preview_url == "https://pbs.twimg.com/gif.mp4"
+        assert media[0].variants[0].url == "https://gif.mp4"
 
 
 # ── _build_graphql_url ───────────────────────────────────────────────────

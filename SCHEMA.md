@@ -46,6 +46,22 @@ data:
     Body text...
 ```
 
+## Media Fields
+
+Video-like `media` items may also include:
+
+```yaml
+media:
+  - type: video
+    url: "highest-quality-mp4"
+    previewUrl: "https://pbs.twimg.com/ext_tw_video_thumb/..."
+    variants:
+      - url: "https://video.twimg.com/...mp4"
+        bitrate: 2176000
+      - url: "https://video.twimg.com/...mp4"
+        bitrate: 832000
+```
+
 ## Error Codes
 
 Common structured error codes:

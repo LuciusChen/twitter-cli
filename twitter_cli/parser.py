@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Any, Callable, Dict, List, Optional, Tuple  # noqa: F401
 
-from .models import Author, Metrics, Tweet, TweetMedia, UserProfile
+from .models import Author, MediaVariant, Metrics, Tweet, TweetMedia, UserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -83,8 +83,15 @@ def _extract_media(legacy):
                 TweetMedia(
                     type=media_type,
                     url=mp4_variants[0]["url"] if mp4_variants else media_item.get("media_url_https", ""),
+                    preview_url=media_item.get("media_url_https", ""),
                     width=_deep_get(media_item, "original_info", "width"),
                     height=_deep_get(media_item, "original_info", "height"),
+                    variants=[
+                        MediaVariant(url=variant.get("url", ""),
+                                     bitrate=variant.get("bitrate"))
+                        for variant in mp4_variants
+                        if variant.get("url")
+                    ],
                 )
             )
     return media

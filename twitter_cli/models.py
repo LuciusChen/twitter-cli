@@ -29,11 +29,19 @@ class Metrics:
 
 
 @dataclass
+class MediaVariant:
+    url: str
+    bitrate: Optional[int] = None
+
+
+@dataclass
 class TweetMedia:
     type: str  # "photo" | "video" | "animated_gif"
     url: str
+    preview_url: str = ""
     width: Optional[int] = None
     height: Optional[int] = None
+    variants: List[MediaVariant] = field(default_factory=list)
 
 
 @dataclass

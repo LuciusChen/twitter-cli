@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from twitter_cli.models import MediaVariant, TweetMedia
 from twitter_cli.serialization import tweet_from_dict, tweet_to_dict, tweets_from_json, tweets_to_json
 
 
@@ -93,3 +94,33 @@ def test_tweet_roundtrip_preserves_promoted_flag(tweet_factory) -> None:
     assert payload["isPromoted"] is True
     restored = tweet_from_dict(payload)
     assert restored.is_promoted is True
+
+
+def test_tweet_roundtrip_preserves_media_preview_and_variants(tweet_factory) -> None:
+    tweet = tweet_factory(
+        "101",
+        media=[
+            TweetMedia(
+                type="video",
+                url="https://high.mp4",
+                preview_url="https://preview.jpg",
+                width=1920,
+                height=1080,
+                variants=[
+                    MediaVariant(url="https://high.mp4", bitrate=2176000),
+                    MediaVariant(url="https://low.mp4", bitrate=832000),
+                ],
+            )
+        ],
+    )
+
+    payload = tweet_to_dict(tweet)
+    assert payload["media"][0]["previewUrl"] == "https://preview.jpg"
+    assert payload["media"][0]["variants"][1]["url"] == "https://low.mp4"
+
+    restored = tweet_from_dict(payload)
+    assert restored.media[0].preview_url == "https://preview.jpg"
+    assert [variant.url for variant in restored.media[0].variants] == [
+        "https://high.mp4",
+        "https://low.mp4",
+    ]
