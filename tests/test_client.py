@@ -333,6 +333,24 @@ class TestBuildHeaders:
 
 
 class TestPaginationBehavior:
+    def test_fetch_timeline_can_include_promoted_content(self):
+        client = TwitterClient.__new__(TwitterClient)
+        client._request_delay = 0.0
+        client._max_count = 200
+
+        calls = []
+
+        def _graphql_get(operation_name, variables, features, field_toggles=None):
+            calls.append(variables.copy())
+            return {"page": 1}
+
+        client._graphql_get = _graphql_get
+
+        with patch('twitter_cli.client.parse_timeline_response', return_value=([], None)):
+            client._fetch_timeline("HomeTimeline", 1, lambda data: data, include_promoted=True)
+
+        assert calls[0]["includePromotedContent"] is True
+
     def test_continues_when_cursor_advances_without_new_tweets(self):
         client = TwitterClient.__new__(TwitterClient)
         client._request_delay = 0.0

@@ -57,6 +57,28 @@ def test_cli_feed_input_accepts_structured_json_envelope(tmp_path, tweet_factory
     assert '"id": "1"' in result.output
 
 
+def test_cli_feed_passes_include_promoted(monkeypatch, tweet_factory) -> None:
+    class FakeClient:
+        def fetch_home_timeline(self, count: int, include_promoted: bool = False):
+            assert count == 20
+            assert include_promoted is True
+            return [tweet_factory("1", is_promoted=True)]
+
+    monkeypatch.setattr("twitter_cli.cli._get_client", lambda config=None, quiet=False: FakeClient())
+    monkeypatch.setattr(
+        "twitter_cli.cli.load_config",
+        lambda: {"fetch": {"count": 20}, "filter": {}, "rateLimit": {}},
+    )
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["feed", "--json", "--include-promoted"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["ok"] is True
+    assert payload["data"][0]["isPromoted"] is True
+
+
 def test_print_tweet_table_truncates_text_by_default(tweet_factory) -> None:
     long_text = "A" * 140
     console = Console(record=True, width=400)

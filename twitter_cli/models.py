@@ -53,6 +53,7 @@ class Tweet:
     article_title: Optional[str] = None
     article_text: Optional[str] = None
     is_subscriber_only: bool = False
+    is_promoted: bool = False
 
 
 @dataclass

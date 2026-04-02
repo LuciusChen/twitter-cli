@@ -406,9 +406,14 @@ def _inherit_flag(ctx, name, value):
 @click.option("--output", "-o", "output_file", type=str, default=None, help="Save filtered tweets to JSON file.")
 @click.option("--filter", "do_filter", is_flag=True, help="Enable score-based filtering.")
 @click.option("--full-text", is_flag=True, help="Show full tweet text in table output.")
+@click.option(
+    "--include-promoted/--no-include-promoted",
+    default=False,
+    help="Include promoted tweets when the timeline endpoint exposes them.",
+)
 @click.pass_context
-def feed(ctx, feed_type, max_count, as_json, as_yaml, input_file, output_file, do_filter, full_text):
-    # type: (Any, str, Optional[int], bool, bool, Optional[str], Optional[str], bool, bool) -> None
+def feed(ctx, feed_type, max_count, as_json, as_yaml, input_file, output_file, do_filter, full_text, include_promoted):
+    # type: (Any, str, Optional[int], bool, bool, Optional[str], Optional[str], bool, bool, bool) -> None
     """Fetch home timeline with optional filtering."""
     compact = ctx.obj.get("compact", False)
     rich_output = use_rich_output(as_json=as_json, as_yaml=as_yaml, compact=compact)
@@ -428,9 +433,9 @@ def feed(ctx, feed_type, max_count, as_json, as_yaml, input_file, output_file, d
                 console.print("📡 Fetching %s (%d tweets)...\n" % (label, fetch_count))
             start = time.time()
             if feed_type == "following":
-                tweets = client.fetch_following_feed(fetch_count)
+                tweets = client.fetch_following_feed(fetch_count, include_promoted=include_promoted)
             else:
-                tweets = client.fetch_home_timeline(fetch_count)
+                tweets = client.fetch_home_timeline(fetch_count, include_promoted=include_promoted)
             elapsed = time.time() - start
             if rich_output:
                 console.print("✅ Fetched %d tweets in %.1fs\n" % (len(tweets), elapsed))

@@ -504,6 +504,10 @@ def parse_timeline_response(data, get_instructions):
             if result:
                 tweet = parse_tweet_result(result)
                 if tweet:
+                    tweet.is_promoted = bool(
+                        str(entry.get("entryId") or "").startswith("promoted-")
+                        or item_content.get("promotedMetadata")
+                    )
                     tweets.append(tweet)
 
             for nested_item in content.get("items", []):
@@ -517,6 +521,11 @@ def parse_timeline_response(data, get_instructions):
                 if nested_result:
                     tweet = parse_tweet_result(nested_result)
                     if tweet:
+                        nested_item_content = _deep_get(nested_item, "item", "itemContent") or {}
+                        tweet.is_promoted = bool(
+                            str(_deep_get(nested_item, "entryId") or "").startswith("promoted-")
+                            or nested_item_content.get("promotedMetadata")
+                        )
                         tweets.append(tweet)
 
     return tweets, next_cursor

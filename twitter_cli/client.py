@@ -153,22 +153,24 @@ class TwitterClient:
 
     # ── Read operations ──────────────────────────────────────────────
 
-    def fetch_home_timeline(self, count=20):
-        # type: (int) -> List[Tweet]
+    def fetch_home_timeline(self, count=20, include_promoted=False):
+        # type: (int, bool) -> List[Tweet]
         """Fetch home timeline tweets."""
         return self._fetch_timeline(
             "HomeTimeline",
             count,
             lambda data: _deep_get(data, "data", "home", "home_timeline_urt", "instructions"),
+            include_promoted=include_promoted,
         )
 
-    def fetch_following_feed(self, count=20):
-        # type: (int) -> List[Tweet]
+    def fetch_following_feed(self, count=20, include_promoted=False):
+        # type: (int, bool) -> List[Tweet]
         """Fetch chronological following feed."""
         return self._fetch_timeline(
             "HomeLatestTimeline",
             count,
             lambda data: _deep_get(data, "data", "home", "home_timeline_urt", "instructions"),
+            include_promoted=include_promoted,
         )
 
     def fetch_bookmarks(self, count=50):
@@ -732,8 +734,8 @@ class TwitterClient:
 
     # ── Internal: timeline / user list fetchers ──────────────────────
 
-    def _fetch_timeline(self, operation_name, count, get_instructions, extra_variables=None, override_base_variables=False, field_toggles=None, use_post=False):
-        # type: (str, int, Callable[[Any], Any], Optional[Dict[str, Any]], bool, Optional[Dict[str, Any]], bool) -> List[Tweet]
+    def _fetch_timeline(self, operation_name, count, get_instructions, extra_variables=None, override_base_variables=False, field_toggles=None, use_post=False, include_promoted=False):
+        # type: (str, int, Callable[[Any], Any], Optional[Dict[str, Any]], bool, Optional[Dict[str, Any]], bool, bool) -> List[Tweet]
         """Generic timeline fetcher with pagination and deduplication.
 
         Args:
@@ -763,7 +765,7 @@ class TwitterClient:
             else:
                 variables = {
                     "count": min(count - len(tweets) + 5, 40),
-                    "includePromotedContent": False,
+                    "includePromotedContent": include_promoted,
                     "latestControlAvailable": True,
                     "requestContext": "launch",
                 }

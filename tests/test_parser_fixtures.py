@@ -36,6 +36,21 @@ def test_parse_home_timeline_fixture(fixture_loader) -> None:
     assert tweets[1].quoted_tweet.id == "30"
 
 
+def test_parse_home_timeline_fixture_marks_promoted_entries(fixture_loader) -> None:
+    payload = fixture_loader("home_timeline.json")
+    entry = payload["data"]["home"]["home_timeline_urt"]["instructions"][0]["entries"][0]
+    entry["entryId"] = "promoted-tweet-1-demo"
+    entry["content"]["itemContent"]["promotedMetadata"] = {"impressionId": "demo"}
+
+    tweets, _ = parse_timeline_response(
+        payload,
+        lambda data: _deep_get(data, "data", "home", "home_timeline_urt", "instructions"),
+    )
+
+    assert tweets[0].is_promoted is True
+    assert tweets[1].is_promoted is False
+
+
 def test_parse_tweet_detail_fixture_with_nested_items(fixture_loader) -> None:
     payload = fixture_loader("tweet_detail.json")
 

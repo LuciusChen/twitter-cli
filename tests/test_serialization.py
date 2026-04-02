@@ -85,3 +85,11 @@ def test_tweet_roundtrip_preserves_subscriber_only(tweet_factory) -> None:
     assert payload["isSubscriberOnly"] is True
     restored = tweet_from_dict(payload)
     assert restored.is_subscriber_only is True
+
+
+def test_tweet_roundtrip_preserves_promoted_flag(tweet_factory) -> None:
+    tweet = tweet_factory("100", is_promoted=True)
+    payload = tweet_to_dict(tweet)
+    assert payload["isPromoted"] is True
+    restored = tweet_from_dict(payload)
+    assert restored.is_promoted is True
