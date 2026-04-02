@@ -349,6 +349,15 @@ def _fetch_and_display(fetch_fn, label, emoji, max_count, as_json, as_yaml, outp
     console.print()
 
 
+def _emit_timeline_structured(tweets, next_cursor, *, as_json, as_yaml):
+    # type: (TweetList, Optional[str], bool, bool) -> bool
+    """Emit timeline data with pagination metadata while keeping `data` a tweet list."""
+    payload = success_payload(tweets_to_data(tweets))
+    if next_cursor:
+        payload["pagination"] = {"nextCursor": next_cursor}
+    return emit_structured(payload, as_json=as_json, as_yaml=as_yaml)
+
+
 def _run_bookmarks_command(max_count, as_json, as_yaml, output_file, do_filter, compact=False, full_text=False):
     # type: (Optional[int], bool, bool, Optional[str], bool, bool, bool) -> None
     config = load_config()
@@ -401,6 +410,7 @@ def _inherit_flag(ctx, name, value):
     help="Feed type: for-you (algorithmic) or following (chronological).",
 )
 @click.option("--max", "-n", "max_count", type=int, default=None, help="Max number of tweets to fetch.")
+@click.option("--cursor", type=str, default=None, help="Pagination cursor for continuing a previous feed request.")
 @structured_output_options
 @click.option("--input", "-i", "input_file", type=str, default=None, help="Load tweets from JSON file.")
 @click.option("--output", "-o", "output_file", type=str, default=None, help="Save filtered tweets to JSON file.")
@@ -412,11 +422,12 @@ def _inherit_flag(ctx, name, value):
     help="Include promoted tweets when the timeline endpoint exposes them.",
 )
 @click.pass_context
-def feed(ctx, feed_type, max_count, as_json, as_yaml, input_file, output_file, do_filter, full_text, include_promoted):
-    # type: (Any, str, Optional[int], bool, bool, Optional[str], Optional[str], bool, bool, bool) -> None
+def feed(ctx, feed_type, max_count, cursor, as_json, as_yaml, input_file, output_file, do_filter, full_text, include_promoted):
+    # type: (Any, str, Optional[int], Optional[str], bool, bool, Optional[str], Optional[str], bool, bool, bool) -> None
     """Fetch home timeline with optional filtering."""
     compact = ctx.obj.get("compact", False)
     rich_output = use_rich_output(as_json=as_json, as_yaml=as_yaml, compact=compact)
+    next_cursor = None  # type: Optional[str]
     config = load_config()
     try:
         if input_file:
@@ -433,9 +444,19 @@ def feed(ctx, feed_type, max_count, as_json, as_yaml, input_file, output_file, d
                 console.print("📡 Fetching %s (%d tweets)...\n" % (label, fetch_count))
             start = time.time()
             if feed_type == "following":
-                tweets = client.fetch_following_feed(fetch_count, include_promoted=include_promoted)
+                tweets, next_cursor = client.fetch_following_feed(
+                    fetch_count,
+                    include_promoted=include_promoted,
+                    cursor=cursor,
+                    return_cursor=True,
+                )
             else:
-                tweets = client.fetch_home_timeline(fetch_count, include_promoted=include_promoted)
+                tweets, next_cursor = client.fetch_home_timeline(
+                    fetch_count,
+                    include_promoted=include_promoted,
+                    cursor=cursor,
+                    return_cursor=True,
+                )
             elapsed = time.time() - start
             if rich_output:
                 console.print("✅ Fetched %d tweets in %.1fs\n" % (len(tweets), elapsed))
@@ -455,7 +476,7 @@ def feed(ctx, feed_type, max_count, as_json, as_yaml, input_file, output_file, d
 
     save_tweet_cache(filtered)
 
-    if emit_structured(tweets_to_data(filtered), as_json=as_json, as_yaml=as_yaml):
+    if _emit_timeline_structured(filtered, next_cursor, as_json=as_json, as_yaml=as_yaml):
         return
 
     title = "👥 Following" if feed_type == "following" else "📱 Twitter"

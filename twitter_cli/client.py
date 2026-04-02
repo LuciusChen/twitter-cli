@@ -153,24 +153,28 @@ class TwitterClient:
 
     # ── Read operations ──────────────────────────────────────────────
 
-    def fetch_home_timeline(self, count=20, include_promoted=False):
-        # type: (int, bool) -> List[Tweet]
+    def fetch_home_timeline(self, count=20, include_promoted=False, cursor=None, return_cursor=False):
+        # type: (int, bool, Optional[str], bool) -> Any
         """Fetch home timeline tweets."""
         return self._fetch_timeline(
             "HomeTimeline",
             count,
             lambda data: _deep_get(data, "data", "home", "home_timeline_urt", "instructions"),
             include_promoted=include_promoted,
+            start_cursor=cursor,
+            return_cursor=return_cursor,
         )
 
-    def fetch_following_feed(self, count=20, include_promoted=False):
-        # type: (int, bool) -> List[Tweet]
+    def fetch_following_feed(self, count=20, include_promoted=False, cursor=None, return_cursor=False):
+        # type: (int, bool, Optional[str], bool) -> Any
         """Fetch chronological following feed."""
         return self._fetch_timeline(
             "HomeLatestTimeline",
             count,
             lambda data: _deep_get(data, "data", "home", "home_timeline_urt", "instructions"),
             include_promoted=include_promoted,
+            start_cursor=cursor,
+            return_cursor=return_cursor,
         )
 
     def fetch_bookmarks(self, count=50):
@@ -734,8 +738,8 @@ class TwitterClient:
 
     # ── Internal: timeline / user list fetchers ──────────────────────
 
-    def _fetch_timeline(self, operation_name, count, get_instructions, extra_variables=None, override_base_variables=False, field_toggles=None, use_post=False, include_promoted=False):
-        # type: (str, int, Callable[[Any], Any], Optional[Dict[str, Any]], bool, Optional[Dict[str, Any]], bool, bool) -> List[Tweet]
+    def _fetch_timeline(self, operation_name, count, get_instructions, extra_variables=None, override_base_variables=False, field_toggles=None, use_post=False, include_promoted=False, start_cursor=None, return_cursor=False):
+        # type: (str, int, Callable[[Any], Any], Optional[Dict[str, Any]], bool, Optional[Dict[str, Any]], bool, bool, Optional[str], bool) -> Any
         """Generic timeline fetcher with pagination and deduplication.
 
         Args:
@@ -753,7 +757,8 @@ class TwitterClient:
 
         tweets = []  # type: List[Tweet]
         seen_ids = set()  # type: Set[str]
-        cursor = None  # type: Optional[str]
+        cursor = start_cursor  # type: Optional[str]
+        continuation_cursor = None  # type: Optional[str]
         attempts = 0
         max_attempts = int(math.ceil(count / 20.0)) + 2
 
@@ -786,10 +791,13 @@ class TwitterClient:
                     tweets.append(tweet)
 
             if not next_cursor:
+                continuation_cursor = None
                 break
             if next_cursor == cursor:
                 logger.debug("Timeline pagination stopped because cursor did not advance: %s", next_cursor)
+                continuation_cursor = None
                 break
+            continuation_cursor = next_cursor
             cursor = next_cursor
 
             if not new_tweets:
@@ -801,6 +809,8 @@ class TwitterClient:
                 logger.debug("Sleeping %.1fs between requests", jitter)
                 time.sleep(jitter)
 
+        if return_cursor:
+            return tweets[:count], continuation_cursor
         return tweets[:count]
 
     def _fetch_user_list(self, operation_name, user_id, count, get_instructions):

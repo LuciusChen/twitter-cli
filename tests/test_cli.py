@@ -59,10 +59,18 @@ def test_cli_feed_input_accepts_structured_json_envelope(tmp_path, tweet_factory
 
 def test_cli_feed_passes_include_promoted(monkeypatch, tweet_factory) -> None:
     class FakeClient:
-        def fetch_home_timeline(self, count: int, include_promoted: bool = False):
+        def fetch_home_timeline(
+            self,
+            count: int,
+            include_promoted: bool = False,
+            cursor: str | None = None,
+            return_cursor: bool = False,
+        ):
             assert count == 20
             assert include_promoted is True
-            return [tweet_factory("1", is_promoted=True)]
+            assert cursor is None
+            assert return_cursor is True
+            return [tweet_factory("1", is_promoted=True)], "cursor-next"
 
     monkeypatch.setattr("twitter_cli.cli._get_client", lambda config=None, quiet=False: FakeClient())
     monkeypatch.setattr(
@@ -77,6 +85,38 @@ def test_cli_feed_passes_include_promoted(monkeypatch, tweet_factory) -> None:
     payload = json.loads(result.output)
     assert payload["ok"] is True
     assert payload["data"][0]["isPromoted"] is True
+    assert payload["pagination"]["nextCursor"] == "cursor-next"
+
+
+def test_cli_feed_accepts_cursor_and_emits_pagination(monkeypatch) -> None:
+    class FakeClient:
+        def fetch_following_feed(
+            self,
+            count: int,
+            include_promoted: bool = False,
+            cursor: str | None = None,
+            return_cursor: bool = False,
+        ):
+            assert count == 20
+            assert include_promoted is False
+            assert cursor == "cursor-prev"
+            assert return_cursor is True
+            return [], "cursor-next"
+
+    monkeypatch.setattr("twitter_cli.cli._get_client", lambda config=None, quiet=False: FakeClient())
+    monkeypatch.setattr(
+        "twitter_cli.cli.load_config",
+        lambda: {"fetch": {"count": 20}, "filter": {}, "rateLimit": {}},
+    )
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["feed", "-t", "following", "--cursor", "cursor-prev", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["ok"] is True
+    assert payload["data"] == []
+    assert payload["pagination"]["nextCursor"] == "cursor-next"
 
 
 def test_print_tweet_table_truncates_text_by_default(tweet_factory) -> None:

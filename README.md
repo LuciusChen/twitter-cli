@@ -97,6 +97,7 @@ twitter feed --filter
 ```bash
 # Feed
 twitter feed --max 50
+twitter feed --cursor "<next-cursor-from-previous-response>"
 twitter feed --full-text
 twitter feed --output tweets.json
 twitter feed --input tweets.json
@@ -427,6 +428,7 @@ twitter feed
 twitter feed -t following
 twitter feed --filter
 twitter feed --full-text
+twitter feed --cursor "<上一页返回的 nextCursor>"
 
 # 收藏
 twitter bookmarks
