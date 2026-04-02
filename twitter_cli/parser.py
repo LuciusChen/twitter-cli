@@ -383,12 +383,13 @@ def parse_user_result(user_data):
     if user_data.get("__typename") == "UserUnavailable":
         return None
     legacy = user_data.get("legacy", {})
-    if not legacy:
+    user_core = user_data.get("core", {})
+    if not legacy and not user_core:
         return None
     return UserProfile(
         id=user_data.get("rest_id", ""),
-        name=legacy.get("name", ""),
-        screen_name=legacy.get("screen_name", ""),
+        name=user_core.get("name") or legacy.get("name", ""),
+        screen_name=user_core.get("screen_name") or legacy.get("screen_name", ""),
         bio=legacy.get("description", ""),
         location=legacy.get("location", ""),
         url=_deep_get(legacy, "entities", "url", "urls", 0, "expanded_url") or "",
@@ -397,7 +398,10 @@ def parse_user_result(user_data):
         tweets_count=_parse_int(legacy.get("statuses_count"), 0),
         likes_count=_parse_int(legacy.get("favourites_count"), 0),
         verified=user_data.get("is_blue_verified", False) or legacy.get("verified", False),
-        profile_image_url=legacy.get("profile_image_url_https", ""),
+        profile_image_url=(
+            user_data.get("avatar", {}).get("image_url")
+            or legacy.get("profile_image_url_https", "")
+        ),
         created_at=legacy.get("created_at", ""),
     )
 

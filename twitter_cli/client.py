@@ -280,10 +280,11 @@ class TwitterClient:
             raise NotFoundError("User @%s not found" % screen_name)
 
         legacy = result.get("legacy", {})
+        user_core = result.get("core", {})
         return UserProfile(
             id=result.get("rest_id", ""),
-            name=legacy.get("name", ""),
-            screen_name=legacy.get("screen_name", screen_name),
+            name=user_core.get("name") or legacy.get("name", ""),
+            screen_name=user_core.get("screen_name") or legacy.get("screen_name", screen_name),
             bio=legacy.get("description", ""),
             location=legacy.get("location", ""),
             url=_deep_get(legacy, "entities", "url", "urls", 0, "expanded_url") or "",
@@ -292,7 +293,8 @@ class TwitterClient:
             tweets_count=_parse_int(legacy.get("statuses_count"), 0),
             likes_count=_parse_int(legacy.get("favourites_count"), 0),
             verified=bool(result.get("is_blue_verified") or legacy.get("verified", False)),
-            profile_image_url=legacy.get("profile_image_url_https", ""),
+            profile_image_url=result.get("avatar", {}).get("image_url")
+            or legacy.get("profile_image_url_https", ""),
             created_at=legacy.get("created_at", ""),
         )
 

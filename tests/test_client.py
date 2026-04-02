@@ -1259,6 +1259,30 @@ class TestParseUserResult:
         assert user.tweets_count == 78
         assert user.likes_count == 0
 
+    def test_falls_back_to_core_name_and_avatar(self):
+        user = parse_user_result(
+            {
+                "rest_id": "user-2",
+                "core": {
+                    "name": "Ding Yi",
+                    "screen_name": "dingyi",
+                },
+                "avatar": {
+                    "image_url": "https://pbs.twimg.com/profile_images/demo.jpg",
+                },
+                "legacy": {
+                    "name": "",
+                    "screen_name": "dingyi",
+                    "followers_count": "12",
+                },
+            }
+        )
+
+        assert user is not None
+        assert user.name == "Ding Yi"
+        assert user.screen_name == "dingyi"
+        assert user.profile_image_url == "https://pbs.twimg.com/profile_images/demo.jpg"
+
 
 # ── upload_media ─────────────────────────────────────────────────────────
 
