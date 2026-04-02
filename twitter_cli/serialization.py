@@ -50,6 +50,9 @@ def tweet_to_dict(tweet: Tweet) -> Dict[str, Any]:
             for media in tweet.media
         ],
         "urls": list(tweet.urls),
+        "conversationId": tweet.conversation_id,
+        "inReplyToStatusId": tweet.in_reply_to_status_id,
+        "inReplyToScreenName": tweet.in_reply_to_screen_name,
         "isRetweet": tweet.is_retweet,
         "retweetedBy": tweet.retweeted_by,
         "lang": tweet.lang,
@@ -134,6 +137,9 @@ def tweet_from_dict(data: Dict[str, Any]) -> Tweet:
             if isinstance(item, dict)
         ],
         urls=[str(url) for url in (data.get("urls") or [])],
+        conversation_id=_optional_str(data.get("conversationId")),
+        in_reply_to_status_id=_optional_str(data.get("inReplyToStatusId")),
+        in_reply_to_screen_name=_optional_str(data.get("inReplyToScreenName")),
         is_retweet=bool(data.get("isRetweet", False)),
         lang=str(data.get("lang") or ""),
         retweeted_by=_optional_str(data.get("retweetedBy")),

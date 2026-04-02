@@ -46,6 +46,18 @@ data:
     Body text...
 ```
 
+## Reply Fields
+
+Tweet objects may also include lightweight reply metadata:
+
+```yaml
+data:
+  id: "2039624925976392014"
+  conversationId: "2039306742803370051"
+  inReplyToStatusId: "2039306742803370051"
+  inReplyToScreenName: "DashHuang"
+```
+
 ## Media Fields
 
 Video-like `media` items may also include:

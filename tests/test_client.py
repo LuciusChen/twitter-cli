@@ -880,6 +880,27 @@ class TestParseTweetResult:
 
     @patch("twitter_cli.client._get_cffi_session")
     @patch("twitter_cli.client._gen_ct_headers", return_value={})
+    def test_parses_reply_metadata(self, mock_ct_headers, mock_session):
+        mock_session.return_value = MagicMock()
+        mock_session.return_value.get = MagicMock(side_effect=Exception("skip"))
+
+        client = TwitterClient.__new__(TwitterClient)
+        client._ct_init_attempted = True
+        client._client_transaction = None
+
+        result = copy.deepcopy(self.SAMPLE_TWEET_RESULT)
+        result["legacy"]["conversation_id_str"] = "1234567890"
+        result["legacy"]["in_reply_to_status_id_str"] = "111"
+        result["legacy"]["in_reply_to_screen_name"] = "dashhuang"
+
+        tweet = parse_tweet_result(result)
+        assert tweet is not None
+        assert tweet.conversation_id == "1234567890"
+        assert tweet.in_reply_to_status_id == "111"
+        assert tweet.in_reply_to_screen_name == "dashhuang"
+
+    @patch("twitter_cli.client._get_cffi_session")
+    @patch("twitter_cli.client._gen_ct_headers", return_value={})
     def test_parses_tombstone_returns_none(self, mock_ct_headers, mock_session):
         mock_session.return_value = MagicMock()
         mock_session.return_value.get = MagicMock(side_effect=Exception("skip"))

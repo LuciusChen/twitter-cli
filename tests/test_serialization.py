@@ -124,3 +124,22 @@ def test_tweet_roundtrip_preserves_media_preview_and_variants(tweet_factory) -> 
         "https://high.mp4",
         "https://low.mp4",
     ]
+
+
+def test_tweet_roundtrip_preserves_reply_metadata(tweet_factory) -> None:
+    tweet = tweet_factory(
+        "102",
+        conversation_id="100",
+        in_reply_to_status_id="100",
+        in_reply_to_screen_name="dashhuang",
+    )
+
+    payload = tweet_to_dict(tweet)
+    assert payload["conversationId"] == "100"
+    assert payload["inReplyToStatusId"] == "100"
+    assert payload["inReplyToScreenName"] == "dashhuang"
+
+    restored = tweet_from_dict(payload)
+    assert restored.conversation_id == "100"
+    assert restored.in_reply_to_status_id == "100"
+    assert restored.in_reply_to_screen_name == "dashhuang"

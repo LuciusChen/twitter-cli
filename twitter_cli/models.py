@@ -53,6 +53,9 @@ class Tweet:
     created_at: str
     media: List[TweetMedia] = field(default_factory=list)
     urls: List[str] = field(default_factory=list)
+    conversation_id: Optional[str] = None
+    in_reply_to_status_id: Optional[str] = None
+    in_reply_to_screen_name: Optional[str] = None
     is_retweet: bool = False
     lang: str = ""
     retweeted_by: Optional[str] = None

@@ -477,6 +477,10 @@ def parse_tweet_result(result, depth=0):
         created_at=actual_legacy.get("created_at", ""),
         media=media,
         urls=urls,
+        conversation_id=actual_legacy.get("conversation_id_str") or actual_legacy.get("conversation_id"),
+        in_reply_to_status_id=actual_legacy.get("in_reply_to_status_id_str")
+        or actual_legacy.get("in_reply_to_status_id"),
+        in_reply_to_screen_name=actual_legacy.get("in_reply_to_screen_name"),
         is_retweet=is_retweet,
         retweeted_by=retweeted_by,
         quoted_tweet=quoted_tweet,
