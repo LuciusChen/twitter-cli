@@ -161,8 +161,10 @@ class TwitterClient:
         self._max_count = min(int(rl.get("maxCount", 200)), _ABSOLUTE_MAX_COUNT)
         self._client_transaction = None  # type: Optional[Any]
         self._ct_init_attempted = False
-        # Eagerly initialize ClientTransaction on construction
-        self._ensure_client_transaction()
+        # Keep startup fast: only reuse a locally cached transaction helper here.
+        # Fresh ClientTransaction bootstrap is expensive and requests still work
+        # without it, so avoid network work on every CLI invocation.
+        self._load_ct_cache()
 
     # ── Read operations ──────────────────────────────────────────────
 

@@ -274,6 +274,19 @@ class TestUpdateFeaturesFromHtml:
 # ── TwitterClient._build_headers ─────────────────────────────────────────
 
 class TestBuildHeaders:
+    @patch.object(TwitterClient, "_ensure_client_transaction")
+    @patch.object(TwitterClient, "_load_ct_cache", return_value=False)
+    def test_init_avoids_eager_transaction_bootstrap(
+        self, mock_load_ct_cache, mock_ensure_client_transaction
+    ):
+        client = TwitterClient("auth", "ct0")
+
+        assert client._auth_token == "auth"
+        assert client._ct0 == "ct0"
+        assert client._ct_init_attempted is False
+        mock_load_ct_cache.assert_called_once_with()
+        mock_ensure_client_transaction.assert_not_called()
+
     @patch("twitter_cli.client._get_cffi_session")
     @patch("twitter_cli.client._gen_ct_headers", return_value={})
     def test_required_headers_present(self, mock_ct_headers, mock_session):
