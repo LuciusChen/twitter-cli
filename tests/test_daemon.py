@@ -77,6 +77,62 @@ def test_daemon_user_posts_reuses_client(tweet_factory) -> None:
     assert lines[1]["data"][0]["id"] == "9"
 
 
+def test_daemon_normalizes_tweet_urls_and_handles(monkeypatch, tweet_factory) -> None:
+    calls: list[tuple[str, str, int | None]] = []
+    profile = UserProfile(id="u1", name="Alice", screen_name="alice")
+
+    class FakeClient:
+        def fetch_tweet_detail(self, tweet_id: str, count: int):
+            calls.append(("tweet", tweet_id, count))
+            return [tweet_factory(tweet_id)]
+
+        def fetch_article(self, tweet_id: str):
+            calls.append(("article", tweet_id, None))
+            return tweet_factory(tweet_id, article_title="T", article_text="B")
+
+        def fetch_user(self, screen_name: str) -> UserProfile:
+            calls.append(("user", screen_name, None))
+            return profile
+
+    daemon = TwitterDaemon(config={"fetch": {"count": 50}, "rateLimit": {}})
+    daemon._client = FakeClient()
+    monkeypatch.setattr("twitter_cli.daemon.close_shared_session", lambda: None)
+    input_stream = StringIO(
+        json.dumps(
+            {
+                "id": "1",
+                "args": ["tweet", "https://x.com/user/status/12345?s=20", "--max", "20"],
+            }
+        )
+        + "\n"
+        + json.dumps(
+            {
+                "id": "2",
+                "args": ["article", "https://x.com/user/article/67890?s=20"],
+            }
+        )
+        + "\n"
+        + json.dumps(
+            {
+                "id": "3",
+                "args": ["user", "@alice"],
+            }
+        )
+        + "\n"
+        + json.dumps({"id": "4", "args": ["shutdown"]})
+        + "\n"
+    )
+    output_stream = StringIO()
+
+    daemon.run_stdio(input_stream, output_stream)
+
+    assert calls == [
+        ("tweet", "12345", 20),
+        ("article", "67890", None),
+        ("user", "alice", None),
+    ]
+
+
 def test_daemon_returns_structured_error_for_unsupported_option() -> None:
     daemon = TwitterDaemon(config={"fetch": {"count": 50}, "rateLimit": {}})
     daemon._client = object()

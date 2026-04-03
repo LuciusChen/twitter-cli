@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
+import urllib.parse
 from typing import Any, TextIO
 
 from .auth import get_cookies
@@ -15,6 +17,34 @@ from .output import error_payload, success_payload
 from .serialization import tweet_to_dict, tweets_to_data, user_profile_to_dict
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_tweet_target(value: str) -> str:
+    """Extract a numeric tweet id from raw input or a full x.com URL."""
+    raw = value.strip()
+    if not raw:
+        raise RuntimeError("Tweet ID or URL is required")
+
+    parsed = urllib.parse.urlparse(raw)
+    candidate = raw
+    if parsed.scheme and parsed.netloc:
+        path = parsed.path.rstrip("/")
+        match = re.search(r"/(?:status|article)/(\d+)$", path)
+        if not match:
+            raise RuntimeError(f"Invalid tweet URL: {value}")
+        candidate = match.group(1)
+    else:
+        candidate = raw.rstrip("/").split("/")[-1]
+        candidate = candidate.split("?", 1)[0].split("#", 1)[0]
+
+    if not candidate.isdigit():
+        raise RuntimeError(f"Invalid tweet ID: {value}")
+    return candidate
+
+
+def _normalize_screen_name(value: str) -> str:
+    """Strip a leading @ from screen names."""
+    return value.lstrip("@")
 
 
 class TwitterDaemon:
@@ -75,6 +105,11 @@ class TwitterDaemon:
                 raise RuntimeError(f"{command} requires a target argument")
             params["target"] = rest[0]
             index = 1
+
+        if command in {"tweet", "article"}:
+            params["target"] = _normalize_tweet_target(params["target"])
+        elif command in {"user", "user-posts"}:
+            params["target"] = _normalize_screen_name(params["target"])
 
         while index < len(rest):
             token = rest[index]
