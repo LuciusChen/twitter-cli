@@ -27,6 +27,7 @@ error:
 - `--yaml` and `--json` both use this envelope
 - non-TTY stdout defaults to YAML
 - tweet and user lists are returned under `data`
+- `lists` returns owned and followed list metadata under `data`
 - timeline-style list commands may also return `pagination.nextCursor`
 - `article` returns a single tweet object under `data`
 - `status` returns `data.authenticated` plus `data.user`

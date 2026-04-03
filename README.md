@@ -137,6 +137,7 @@ twitter article 1234567890 --output article.md
 # List timeline
 twitter list 1539453138322673664
 twitter list 1539453138322673664 --full-text
+twitter lists --json                     # your owned and followed lists
 
 # User
 twitter user elonmusk
@@ -459,6 +460,7 @@ twitter article 1234567890 --output article.md
 # 列表时间线
 twitter list 1539453138322673664
 twitter list 1539453138322673664 --full-text
+twitter lists --json                     # 当前账号自己的和已关注的 lists
 
 # 用户
 twitter user elonmusk

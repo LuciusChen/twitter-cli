@@ -14,7 +14,7 @@ from .client import TwitterClient, close_shared_session
 from .config import load_config
 from .exceptions import TwitterError
 from .output import error_payload, success_payload
-from .serialization import tweet_to_dict, tweets_to_data, user_profile_to_dict
+from .serialization import list_infos_to_data, tweet_to_dict, tweets_to_data, user_profile_to_dict
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +172,9 @@ class TwitterDaemon:
             return success_payload(
                 tweets_to_data(client.fetch_user_tweets(profile.id, count))
             )
+
+        if command == "lists":
+            return success_payload(list_infos_to_data(client.fetch_my_lists()))
 
         if command == "shutdown":
             return success_payload({"shutdown": True})

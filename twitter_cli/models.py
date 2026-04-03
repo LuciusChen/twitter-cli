@@ -74,6 +74,24 @@ class BookmarkFolder:
 
 
 @dataclass
+class ListInfo:
+    id: str
+    name: str
+    slug: str = ""
+    description: str = ""
+    mode: str = ""
+    member_count: int = 0
+    subscriber_count: int = 0
+    uri: str = ""
+    full_name: str = ""
+    owner_name: str = ""
+    owner_screen_name: str = ""
+    owner_profile_image_url: str = ""
+    following: bool = False
+    sources: List[str] = field(default_factory=list)
+
+
+@dataclass
 class UserProfile:
     id: str
     name: str

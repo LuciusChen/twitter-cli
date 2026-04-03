@@ -47,7 +47,7 @@ from .graphql import (
     _resolve_query_id,
     _update_features_from_html,
 )
-from .models import BookmarkFolder, UserProfile
+from .models import BookmarkFolder, ListInfo, UserProfile
 from .parser import (
     _deep_get,
     _parse_int,
@@ -70,6 +70,8 @@ TimelineInstructionGetter = Callable[[Any], Any]
 
 # Hard ceiling to prevent accidental massive fetches
 _ABSOLUTE_MAX_COUNT = 500
+_LIST_COLLECTION_PAGE_SIZE = 100
+_LIST_SOURCE_PRIORITY = {"owned": 0, "subscribed": 1, "member": 2}
 
 
 # ── Session management ───────────────────────────────────────────────────
@@ -456,6 +458,45 @@ class TwitterClient:
             lambda data: _deep_get(data, "data", "list", "tweets_timeline", "timeline", "instructions"),
             extra_variables={"listId": list_id},
             override_base_variables=True,
+        )
+
+    def fetch_my_lists(self):
+        # type: () -> List[ListInfo]
+        """Fetch lists accessible to the authenticated account."""
+        return self.fetch_lists_for_user(self.fetch_me().id)
+
+    def fetch_lists_for_user(self, user_id):
+        # type: (str) -> List[ListInfo]
+        """Fetch owned and subscribed lists for USER_ID."""
+        merged = {}  # type: Dict[str, ListInfo]
+        for endpoint, source in (
+            ("ownerships", "owned"),
+            ("subscriptions", "subscribed"),
+        ):
+            for list_info in self._fetch_rest_list_collection(endpoint, user_id):
+                existing = merged.get(list_info.id)
+                if existing is None:
+                    list_info.sources = [source]
+                    merged[list_info.id] = list_info
+                else:
+                    if source not in existing.sources:
+                        existing.sources.append(source)
+                    if not existing.description and list_info.description:
+                        existing.description = list_info.description
+                    if not existing.mode and list_info.mode:
+                        existing.mode = list_info.mode
+                    existing.member_count = max(existing.member_count, list_info.member_count)
+                    existing.subscriber_count = max(existing.subscriber_count, list_info.subscriber_count)
+                    existing.following = existing.following or list_info.following
+
+        return sorted(
+            merged.values(),
+            key=lambda item: (
+                min((_LIST_SOURCE_PRIORITY.get(source, 99) for source in item.sources), default=99),
+                item.owner_screen_name.lower(),
+                item.name.lower(),
+                item.id,
+            ),
         )
 
     def fetch_followers(self, user_id, count=20):
@@ -896,6 +937,73 @@ class TwitterClient:
                 time.sleep(self._request_delay * random.uniform(0.7, 1.5))
 
         return users[:count]
+
+    def _fetch_rest_list_collection(self, endpoint, user_id):
+        # type: (str, str) -> List[ListInfo]
+        """Fetch a paginated REST list collection for USER_ID."""
+        lists = []  # type: List[ListInfo]
+        seen_ids = set()  # type: Set[str]
+        cursor = "-1"
+        attempts = 0
+        max_attempts = 20
+
+        while cursor and cursor != "0" and attempts < max_attempts:
+            attempts += 1
+            query = urllib.parse.urlencode(
+                {
+                    "user_id": user_id,
+                    "count": _LIST_COLLECTION_PAGE_SIZE,
+                    "cursor": cursor,
+                }
+            )
+            url = "https://x.com/i/api/1.1/lists/%s.json?%s" % (endpoint, query)
+            data = self._api_get(url)
+
+            for item in data.get("lists") or []:
+                list_info = self._parse_list_info(item)
+                if list_info and list_info.id not in seen_ids:
+                    seen_ids.add(list_info.id)
+                    lists.append(list_info)
+
+            next_cursor = data.get("next_cursor_str") or data.get("next_cursor")
+            if next_cursor is None:
+                break
+            next_cursor = str(next_cursor)
+            if next_cursor == cursor:
+                logger.debug("List pagination stopped because cursor did not advance: %s", next_cursor)
+                break
+            cursor = next_cursor
+
+            if cursor != "0" and self._request_delay > 0:
+                time.sleep(self._request_delay * random.uniform(0.7, 1.5))
+
+        return lists
+
+    @staticmethod
+    def _parse_list_info(data):
+        # type: (Dict[str, Any]) -> Optional[ListInfo]
+        """Parse a REST list payload into a ListInfo dataclass."""
+        if not isinstance(data, dict):
+            return None
+        list_id = str(data.get("id_str") or data.get("id") or "")
+        if not list_id:
+            return None
+        owner = data.get("user") or {}
+        return ListInfo(
+            id=list_id,
+            name=str(data.get("name") or ""),
+            slug=str(data.get("slug") or ""),
+            description=str(data.get("description") or ""),
+            mode=str(data.get("mode") or ""),
+            member_count=_parse_int(data.get("member_count"), 0),
+            subscriber_count=_parse_int(data.get("subscriber_count"), 0),
+            uri=str(data.get("uri") or ""),
+            full_name=str(data.get("full_name") or ""),
+            owner_name=str(owner.get("name") or ""),
+            owner_screen_name=str(owner.get("screen_name") or ""),
+            owner_profile_image_url=str(owner.get("profile_image_url_https") or owner.get("profile_image_url") or ""),
+            following=bool(data.get("following", False)),
+        )
 
     # ── Internal: GraphQL request methods ────────────────────────────
 

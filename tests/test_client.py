@@ -529,6 +529,60 @@ class TestTweetDetailFetch:
 
         assert [user.screen_name for user in users] == ["alice"]
 
+    def test_fetch_lists_for_user_merges_sources(self):
+        client = TwitterClient("auth", "ct0", {"requestDelay": 0})
+
+        def _api_get(url):
+            if "ownerships.json" in url:
+                return {
+                    "lists": [
+                        {
+                            "id_str": "1",
+                            "name": "Emacs",
+                            "mode": "private",
+                            "member_count": 5,
+                            "subscriber_count": 2,
+                            "following": True,
+                            "user": {"name": "Lucius", "screen_name": "lucius"},
+                        }
+                    ],
+                    "next_cursor_str": "0",
+                }
+            if "subscriptions.json" in url:
+                return {
+                    "lists": [
+                        {
+                            "id_str": "1",
+                            "name": "Emacs",
+                            "mode": "private",
+                            "member_count": 7,
+                            "subscriber_count": 4,
+                            "following": True,
+                            "user": {"name": "Lucius", "screen_name": "lucius"},
+                        },
+                        {
+                            "id_str": "2",
+                            "name": "AI",
+                            "mode": "public",
+                            "member_count": 8,
+                            "subscriber_count": 1,
+                            "following": True,
+                            "user": {"name": "Alice", "screen_name": "alice"},
+                        }
+                    ],
+                    "next_cursor_str": "0",
+                }
+            raise AssertionError("Unexpected URL %s" % url)
+
+        client._api_get = _api_get
+
+        lists = client.fetch_lists_for_user("42")
+
+        assert [item.id for item in lists] == ["1", "2"]
+        assert lists[0].sources == ["owned", "subscribed"]
+        assert lists[0].member_count == 7
+        assert lists[1].sources == ["subscribed"]
+
 
 # ── Article parsing helpers ───────────────────────────────────────────────
 

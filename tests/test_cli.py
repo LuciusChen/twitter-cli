@@ -10,7 +10,7 @@ import yaml
 
 from twitter_cli.cli import cli
 from twitter_cli.formatter import article_to_markdown, print_tweet_table
-from twitter_cli.models import Author, BookmarkFolder, Metrics, Tweet, UserProfile
+from twitter_cli.models import Author, BookmarkFolder, ListInfo, Metrics, Tweet, UserProfile
 from twitter_cli.serialization import tweets_to_json
 
 
@@ -149,6 +149,7 @@ def test_print_tweet_table_full_text_shows_untruncated_text(tweet_factory) -> No
         ["user-posts", "alice"],
         ["likes", "alice"],
         ["list", "123"],
+        ["lists"],
     ],
 )
 def test_cli_commands_wrap_client_creation_errors(monkeypatch, args) -> None:
@@ -473,6 +474,33 @@ def test_cli_whoami_auto_yaml(monkeypatch) -> None:
     assert payload["ok"] is True
     assert payload["schema_version"] == "1"
     assert payload["data"]["user"]["username"] == "testuser"
+
+
+def test_cli_lists_command(monkeypatch) -> None:
+    class FakeClient:
+        def fetch_my_lists(self):
+            return [
+                ListInfo(
+                    id="123",
+                    name="Emacs",
+                    owner_screen_name="lucius",
+                    owner_name="Lucius Chen",
+                    mode="private",
+                    sources=["owned"],
+                )
+            ]
+
+    monkeypatch.setattr("twitter_cli.cli._get_client", lambda config=None, quiet=False: FakeClient())
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["lists", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["ok"] is True
+    assert payload["data"][0]["id"] == "123"
+    assert payload["data"][0]["owner"]["screenName"] == "lucius"
+    assert payload["data"][0]["sources"] == ["owned"]
 
 
 def test_cli_status_auto_yaml(monkeypatch) -> None:

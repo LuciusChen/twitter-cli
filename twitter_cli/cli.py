@@ -14,6 +14,7 @@ Read commands:
     twitter tweet <id>                # tweet detail + replies
     twitter article <id>              # Twitter Article as Markdown
     twitter list <id>                 # list timeline
+    twitter lists                     # your accessible lists
     twitter followers <handle>        # followers list
     twitter following <handle>        # following list
     twitter whoami                    # current user profile
@@ -73,6 +74,7 @@ from .output import (
     use_rich_output,
 )
 from .serialization import (
+    list_infos_to_data,
     tweet_to_dict,
     tweets_from_json,
     tweets_to_data,
@@ -1039,6 +1041,47 @@ def list_timeline(ctx, list_id, max_count, as_json, as_yaml, do_filter, full_tex
             "list %s" % list_id, "📋", max_count, as_json, as_yaml, None, do_filter, config,
             compact=compact, full_text=full_text,
         )
+    _run_guarded(_run)
+
+
+@cli.command(name="lists")
+@structured_output_options
+@click.pass_context
+def lists_catalog(ctx, as_json, as_yaml):
+    # type: (Any, bool, bool) -> None
+    """List your owned and followed Twitter Lists."""
+    compact = ctx.obj.get("compact", False)
+    config = load_config()
+
+    def _run():
+        rich_output = use_rich_output(as_json=as_json, as_yaml=as_yaml, compact=compact)
+        client = _get_client(config, quiet=not rich_output)
+        if rich_output:
+            console.print("\U0001f4cb Fetching your lists...\n")
+        lists = client.fetch_my_lists()
+        data = list_infos_to_data(lists)
+
+        if compact:
+            click.echo(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
+            return
+
+        if emit_structured(data, as_json=as_json, as_yaml=as_yaml):
+            return
+
+        from rich.table import Table
+        table = Table(title="\U0001f4cb Lists \u2014 %d lists" % len(lists))
+        table.add_column("Name", style="bold")
+        table.add_column("Owner", style="cyan")
+        table.add_column("Mode", style="dim")
+        table.add_column("Sources", style="magenta")
+        table.add_column("ID", style="dim")
+        for item in lists:
+            owner = "@%s" % item.owner_screen_name if item.owner_screen_name else ""
+            sources = ", ".join(item.sources)
+            table.add_row(item.name or item.id, owner, item.mode or "", sources, item.id)
+        console.print(table)
+        console.print()
+
     _run_guarded(_run)
 
 

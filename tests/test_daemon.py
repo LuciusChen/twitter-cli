@@ -4,7 +4,7 @@ import json
 from io import StringIO
 
 from twitter_cli.daemon import TwitterDaemon
-from twitter_cli.models import UserProfile
+from twitter_cli.models import ListInfo, UserProfile
 
 
 def test_daemon_stdio_emits_ready_and_feed_payload(monkeypatch, tweet_factory) -> None:
@@ -150,3 +150,27 @@ def test_daemon_returns_structured_error_for_unsupported_option() -> None:
     assert lines[1]["id"] == "1"
     assert lines[1]["ok"] is False
     assert "Unsupported daemon option" in lines[1]["error"]["message"]
+
+
+def test_daemon_lists_returns_catalog(monkeypatch) -> None:
+    class FakeClient:
+        def fetch_my_lists(self):
+            return [ListInfo(id="123", name="Emacs", owner_screen_name="lucius", sources=["owned"])]
+
+    daemon = TwitterDaemon(config={"fetch": {"count": 50}, "rateLimit": {}})
+    daemon._client = FakeClient()
+    monkeypatch.setattr("twitter_cli.daemon.close_shared_session", lambda: None)
+    input_stream = StringIO(
+        json.dumps({"id": "1", "args": ["lists"]})
+        + "\n"
+        + json.dumps({"id": "2", "args": ["shutdown"]})
+        + "\n"
+    )
+    output_stream = StringIO()
+
+    daemon.run_stdio(input_stream, output_stream)
+
+    lines = [json.loads(line) for line in output_stream.getvalue().splitlines()]
+    assert lines[1]["ok"] is True
+    assert lines[1]["data"][0]["id"] == "123"
+    assert lines[1]["data"][0]["sources"] == ["owned"]

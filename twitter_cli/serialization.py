@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Iterable, List, Optional
 
-from .models import Author, BookmarkFolder, MediaVariant, Metrics, Tweet, TweetMedia, UserProfile
+from .models import Author, BookmarkFolder, ListInfo, MediaVariant, Metrics, Tweet, TweetMedia, UserProfile
 from .timeutil import format_iso8601, format_local_time
 
 
@@ -213,6 +213,33 @@ def bookmark_folder_to_dict(folder: BookmarkFolder) -> Dict[str, Any]:
 def bookmark_folders_to_data(folders: Iterable[BookmarkFolder]) -> List[Dict[str, Any]]:
     """Serialize BookmarkFolder objects to Python dicts."""
     return [bookmark_folder_to_dict(f) for f in folders]
+
+
+def list_info_to_dict(list_info: ListInfo) -> Dict[str, Any]:
+    """Convert a ListInfo dataclass into a JSON-safe dict."""
+    return {
+        "id": list_info.id,
+        "name": list_info.name,
+        "slug": list_info.slug,
+        "description": list_info.description,
+        "mode": list_info.mode,
+        "memberCount": list_info.member_count,
+        "subscriberCount": list_info.subscriber_count,
+        "uri": list_info.uri,
+        "fullName": list_info.full_name,
+        "owner": {
+            "name": list_info.owner_name,
+            "screenName": list_info.owner_screen_name,
+            "profileImageUrl": list_info.owner_profile_image_url,
+        },
+        "following": list_info.following,
+        "sources": list(list_info.sources),
+    }
+
+
+def list_infos_to_data(list_infos: Iterable[ListInfo]) -> List[Dict[str, Any]]:
+    """Serialize ListInfo objects to Python dicts."""
+    return [list_info_to_dict(item) for item in list_infos]
 
 
 def user_profile_to_dict(user: UserProfile) -> Dict[str, Any]:
