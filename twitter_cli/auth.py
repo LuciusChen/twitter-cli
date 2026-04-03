@@ -16,6 +16,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from .constants import BEARER_TOKEN, get_user_agent
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Domains to match for Twitter cookies
 _TWITTER_DOMAINS = {"x.com", "twitter.com", ".x.com", ".twitter.com"}
+_COOKIE_CACHE_TTL = max(int(os.environ.get("TWITTER_COOKIE_CACHE_TTL", "900")), 0)
 
 
 def _is_twitter_domain(domain: str) -> bool:
@@ -161,6 +163,60 @@ def verify_cookies(auth_token: str, ct0: str, cookie_string: Optional[str] = Non
         ", ".join(attempts) if attempts else "none",
     )
     return {}
+
+
+def _cookie_cache_path() -> str:
+    """Return path for the short-lived browser cookie cache."""
+    home = os.path.expanduser("~")
+    return os.path.join(home, ".twitter-cli", "cookie_cache.json")
+
+
+def _load_cookie_cache() -> Optional[Dict[str, str]]:
+    """Load a fresh browser cookie cache entry, or nil when absent/stale."""
+    if _COOKIE_CACHE_TTL <= 0:
+        return None
+    try:
+        cache_path = _cookie_cache_path()
+        if not os.path.exists(cache_path):
+            return None
+        with open(cache_path, "r", encoding="utf-8") as f:
+            cache = json.load(f)
+        created_at = float(cache.get("created_at", 0))
+        if time.time() - created_at > _COOKIE_CACHE_TTL:
+            return None
+        auth_token = cache.get("auth_token")
+        ct0 = cache.get("ct0")
+        if not auth_token or not ct0:
+            return None
+        cookies = {"auth_token": auth_token, "ct0": ct0}
+        cookie_string = cache.get("cookie_string")
+        if cookie_string:
+            cookies["cookie_string"] = cookie_string
+        logger.info("Loaded Twitter cookies from cache")
+        return cookies
+    except Exception as exc:
+        logger.debug("Failed to load cookie cache: %s", exc)
+        return None
+
+
+def _save_cookie_cache(cookies: Dict[str, str]) -> None:
+    """Save browser-derived cookies to the short-lived cache."""
+    if _COOKIE_CACHE_TTL <= 0:
+        return
+    try:
+        cache_path = _cookie_cache_path()
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        payload = {
+            "auth_token": cookies["auth_token"],
+            "ct0": cookies["ct0"],
+            "created_at": time.time(),
+        }
+        if cookies.get("cookie_string"):
+            payload["cookie_string"] = cookies["cookie_string"]
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+    except Exception as exc:
+        logger.debug("Failed to save cookie cache: %s", exc)
 
 
 def _extract_cookies_from_jar(jar: Any, source: str = "unknown") -> Optional[Dict[str, str]]:
@@ -593,13 +649,21 @@ def get_cookies() -> Dict[str, str]:
     """
     cookies: Optional[Dict[str, str]] = None
     diagnostics: List[str] = []
+    from_env = False
+    from_cache = False
 
     # 1. Try environment variables
     cookies = load_from_env()
     if cookies:
+        from_env = True
         logger.info("Loaded cookies from environment variables")
 
-    # 2. Try browser extraction (auto-detect)
+    # 2. Reuse the short-lived browser cache when available.
+    if not cookies:
+        cookies = _load_cookie_cache()
+        from_cache = cookies is not None
+
+    # 3. Try browser extraction (auto-detect)
     if not cookies:
         logger.debug("Attempting browser cookie extraction")
         cookies, diagnostics = extract_from_browser()
@@ -619,6 +683,9 @@ def get_cookies() -> Dict[str, str]:
         lines.append("Run 'twitter -v <command>' for debug diagnostics.")
         raise AuthenticationError("\n".join(lines))
 
+    if from_cache:
+        return cookies
+
     # Verify only for explicit auth failures; transient endpoint issues are tolerated.
     try:
         verify_cookies(cookies["auth_token"], cookies["ct0"], cookies.get("cookie_string"))
@@ -629,6 +696,9 @@ def get_cookies() -> Dict[str, str]:
         if fresh_cookies:
             # Verify fresh cookies — if this also fails, let it raise
             verify_cookies(fresh_cookies["auth_token"], fresh_cookies["ct0"], fresh_cookies.get("cookie_string"))
+            _save_cookie_cache(fresh_cookies)
             return fresh_cookies
         raise
+    if not from_env:
+        _save_cookie_cache(cookies)
     return cookies

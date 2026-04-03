@@ -12,6 +12,7 @@ from twitter_cli import auth
 
 def test_get_cookies_prefers_env(monkeypatch) -> None:
     monkeypatch.setattr(auth, "load_from_env", lambda: {"auth_token": "env-token", "ct0": "env-csrf"})
+    monkeypatch.setattr(auth, "_load_cookie_cache", lambda: pytest.fail("should not use cache"))
     monkeypatch.setattr(auth, "extract_from_browser", lambda: pytest.fail("should not extract from browser"))
     seen = []
     monkeypatch.setattr(
@@ -26,8 +27,50 @@ def test_get_cookies_prefers_env(monkeypatch) -> None:
     assert seen == [("env-token", "env-csrf", None)]
 
 
+def test_get_cookies_uses_fresh_cache_without_verification(monkeypatch) -> None:
+    monkeypatch.setattr(auth, "load_from_env", lambda: None)
+    monkeypatch.setattr(
+        auth,
+        "_load_cookie_cache",
+        lambda: {"auth_token": "cached-token", "ct0": "cached-csrf", "cookie_string": "cached=1"},
+    )
+    monkeypatch.setattr(auth, "extract_from_browser", lambda: pytest.fail("should not extract from browser"))
+    monkeypatch.setattr(auth, "verify_cookies", lambda *args, **kwargs: pytest.fail("should not verify cache"))
+
+    cookies = auth.get_cookies()
+
+    assert cookies == {
+        "auth_token": "cached-token",
+        "ct0": "cached-csrf",
+        "cookie_string": "cached=1",
+    }
+
+
+def test_get_cookies_saves_verified_browser_cookies(monkeypatch) -> None:
+    monkeypatch.setattr(auth, "load_from_env", lambda: None)
+    monkeypatch.setattr(auth, "_load_cookie_cache", lambda: None)
+    monkeypatch.setattr(
+        auth,
+        "extract_from_browser",
+        lambda: ({"auth_token": "browser-token", "ct0": "browser-csrf", "cookie_string": "browser=1"}, []),
+    )
+    monkeypatch.setattr(auth, "verify_cookies", lambda auth_token, ct0, cookie_string=None: {})
+    saved = []
+    monkeypatch.setattr(auth, "_save_cookie_cache", lambda cookies: saved.append(dict(cookies)))
+
+    cookies = auth.get_cookies()
+
+    assert cookies["auth_token"] == "browser-token"
+    assert saved == [{
+        "auth_token": "browser-token",
+        "ct0": "browser-csrf",
+        "cookie_string": "browser=1",
+    }]
+
+
 def test_get_cookies_reextracts_after_verify_failure(monkeypatch) -> None:
     monkeypatch.setattr(auth, "load_from_env", lambda: None)
+    monkeypatch.setattr(auth, "_load_cookie_cache", lambda: None)
     extracted = iter(
         [
             ({"auth_token": "stale-token", "ct0": "stale-csrf", "cookie_string": "stale=1"}, []),
@@ -45,6 +88,8 @@ def test_get_cookies_reextracts_after_verify_failure(monkeypatch) -> None:
         return {}
 
     monkeypatch.setattr(auth, "verify_cookies", _verify)
+    saved = []
+    monkeypatch.setattr(auth, "_save_cookie_cache", lambda cookies: saved.append(dict(cookies)))
 
     cookies = auth.get_cookies()
 
@@ -53,6 +98,7 @@ def test_get_cookies_reextracts_after_verify_failure(monkeypatch) -> None:
         ("stale-token", "stale-csrf", "stale=1"),
         ("fresh-token", "fresh-csrf", "fresh=1"),
     ]
+    assert saved == [{"auth_token": "fresh-token", "ct0": "fresh-csrf", "cookie_string": "fresh=1"}]
 
 
 def test_load_from_env_logs_incomplete_env(monkeypatch, caplog) -> None:
@@ -109,6 +155,8 @@ def test_extract_in_process_supports_arc(monkeypatch) -> None:
         brave=lambda: pytest.fail("brave should not be used when arc succeeds"),
     )
     monkeypatch.setitem(sys.modules, "browser_cookie3", fake_module)
+    monkeypatch.setattr(auth, "_get_browser_order", lambda: ["arc", "chrome", "edge", "firefox", "brave"])
+    monkeypatch.setattr(auth, "_iter_chrome_cookie_files", lambda _name: [])
 
     cookies, diagnostics = auth._extract_in_process()
 
@@ -188,6 +236,43 @@ def test_verify_cookies_logs_attempt_summary_on_non_auth_failures(monkeypatch, c
     assert result == {}
     assert "verify_credentials.json=404" in caplog.text
     assert "settings.json=Exception" in caplog.text
+
+
+def test_cookie_cache_round_trip(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(auth, "_COOKIE_CACHE_TTL", 900)
+
+    auth._save_cookie_cache({
+        "auth_token": "cached-token",
+        "ct0": "cached-csrf",
+        "cookie_string": "cached=1",
+    })
+
+    cookies = auth._load_cookie_cache()
+
+    assert cookies == {
+        "auth_token": "cached-token",
+        "ct0": "cached-csrf",
+        "cookie_string": "cached=1",
+    }
+
+
+def test_cookie_cache_ignores_stale_entries(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(auth, "_COOKIE_CACHE_TTL", 10)
+    cache_path = tmp_path / ".twitter-cli" / "cookie_cache.json"
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(
+        json.dumps({
+            "auth_token": "stale-token",
+            "ct0": "stale-csrf",
+            "created_at": 0,
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(auth.time, "time", lambda: 1000)
+
+    assert auth._load_cookie_cache() is None
 
 
 def test_iter_chrome_cookie_files_default_first(monkeypatch, tmp_path) -> None:
@@ -407,6 +492,8 @@ def test_extract_in_process_returns_diagnostics_on_failure(monkeypatch) -> None:
         brave=lambda: (_ for _ in ()).throw(BrowserError("Brave not found")),
     )
     monkeypatch.setitem(sys.modules, "browser_cookie3", fake_module)
+    monkeypatch.setattr(auth, "_get_browser_order", lambda: ["arc", "chrome", "edge", "firefox", "brave"])
+    monkeypatch.setattr(auth, "_iter_chrome_cookie_files", lambda _name: [])
 
     cookies, diagnostics = auth._extract_in_process()
 
