@@ -372,6 +372,47 @@ class TestPaginationBehavior:
 
         assert calls[0]["includePromotedContent"] is True
 
+
+class TestTweetDetailFetch:
+    def test_fetch_tweet_detail_uses_lighter_optional_fields(self):
+        client = TwitterClient.__new__(TwitterClient)
+        captured = {}
+
+        def _fetch_timeline(
+            operation_name,
+            count,
+            get_instructions,
+            extra_variables=None,
+            override_base_variables=False,
+            field_toggles=None,
+            use_post=False,
+            include_promoted=False,
+            start_cursor=None,
+            return_cursor=False,
+        ):
+            captured.update(
+                operation_name=operation_name,
+                count=count,
+                extra_variables=extra_variables,
+                override_base_variables=override_base_variables,
+                field_toggles=field_toggles,
+                return_cursor=return_cursor,
+            )
+            return []
+
+        client._fetch_timeline = _fetch_timeline
+
+        client.fetch_tweet_detail("123", 20)
+
+        assert captured["operation_name"] == "TweetDetail"
+        assert captured["count"] == 20
+        assert captured["extra_variables"]["withCommunity"] is False
+        assert captured["extra_variables"]["withQuickPromoteEligibilityTweetFields"] is False
+        assert captured["extra_variables"]["withBirdwatchNotes"] is False
+        assert captured["extra_variables"]["withVoice"] is False
+        assert captured["field_toggles"]["withArticleRichContentState"] is True
+        assert captured["override_base_variables"] is True
+
     def test_continues_when_cursor_advances_without_new_tweets(self):
         client = TwitterClient.__new__(TwitterClient)
         client._request_delay = 0.0

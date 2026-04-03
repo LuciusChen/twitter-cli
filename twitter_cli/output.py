@@ -12,6 +12,7 @@ import yaml
 
 _OUTPUT_ENV = "OUTPUT"
 _SCHEMA_VERSION = "1"
+_COMPACT_JSON_ENV = "TWITTER_CLI_COMPACT_JSON"
 
 
 def ensure_utf8_streams() -> None:
@@ -71,6 +72,12 @@ def structured_output_options(command: Callable) -> Callable:
     return command
 
 
+def _compact_json_requested() -> bool:
+    """Return True when structured JSON should be emitted without indentation."""
+    value = os.getenv(_COMPACT_JSON_ENV, "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def emit_structured(data: Any, *, as_json: bool, as_yaml: bool) -> bool:
     """Emit structured output and return True when used."""
     fmt = default_structured_format(as_json=as_json, as_yaml=as_yaml)
@@ -78,7 +85,10 @@ def emit_structured(data: Any, *, as_json: bool, as_yaml: bool) -> bool:
         return False
     payload = _normalize_success_payload(data)
     if fmt == "json":
-        click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        if _compact_json_requested():
+            click.echo(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+        else:
+            click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         click.echo(
             yaml.safe_dump(
@@ -143,8 +153,10 @@ def emit_error(
 
     payload = error_payload(code, message, details=details)
     if fmt == "json":
-        click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        if _compact_json_requested():
+            click.echo(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+        else:
+            click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         click.echo(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False, default_flow_style=False))
     return True
-

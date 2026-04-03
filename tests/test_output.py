@@ -122,6 +122,17 @@ def test_emit_structured_json(capsys) -> None:
     assert parsed["data"]["key"] == "val"
 
 
+def test_emit_structured_json_can_be_compact(monkeypatch, capsys) -> None:
+    monkeypatch.setenv("TWITTER_CLI_COMPACT_JSON", "1")
+    result = emit_structured({"key": "val"}, as_json=True, as_yaml=False)
+    assert result is True
+    captured = capsys.readouterr()
+    parsed = json.loads(captured.out)
+    assert parsed["ok"] is True
+    assert parsed["data"]["key"] == "val"
+    assert "\n  " not in captured.out
+
+
 def test_emit_structured_yaml(capsys) -> None:
     result = emit_structured({"key": "val"}, as_json=False, as_yaml=True)
     assert result is True
