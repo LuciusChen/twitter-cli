@@ -121,6 +121,19 @@ def _get_cffi_session():
     return _cffi_session
 
 
+def close_shared_session():
+    # type: () -> None
+    """Close the shared curl_cffi session if it exists."""
+    global _cffi_session
+    if _cffi_session is None:
+        return
+    try:
+        _cffi_session.close()
+    except Exception:
+        logger.debug("Failed to close shared curl_cffi session", exc_info=True)
+    _cffi_session = None
+
+
 def _url_fetch(url, headers=None):
     # type: (str, Optional[Dict[str, str]]) -> str
     """URL fetch using curl_cffi for proper TLS fingerprint."""

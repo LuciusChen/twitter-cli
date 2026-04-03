@@ -1005,6 +1005,21 @@ def article(ctx, tweet_id, as_json, as_yaml, as_markdown, output_file):
     console.print()
 
 
+@cli.command(name="daemon")
+@click.option("--stdio", is_flag=True, help="Run a persistent daemon over stdin/stdout.")
+def daemon(stdio):
+    # type: (bool) -> None
+    """Run a persistent helper for repeated machine-readable read requests."""
+    if not stdio:
+        raise click.UsageError("Use `twitter daemon --stdio`.")
+
+    from .daemon import TwitterDaemon
+
+    ensure_utf8_streams()
+    daemon = TwitterDaemon()
+    raise SystemExit(daemon.run_stdio())
+
+
 @cli.command(name="list")
 @click.argument("list_id")
 @click.option("--max", "-n", "max_count", type=int, default=None, help="Max tweets to fetch.")
