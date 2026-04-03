@@ -118,6 +118,10 @@ def _agent_user_profile(profile: UserProfile) -> dict:
         "verified": data["verified"],
         "profileImageUrl": data["profileImageUrl"],
         "createdAt": data["createdAt"],
+        "viewerFollowing": data["viewerFollowing"],
+        "viewerFollowedBy": data["viewerFollowedBy"],
+        "viewerBlocking": data["viewerBlocking"],
+        "viewerMuting": data["viewerMuting"],
     }
 
 
@@ -693,12 +697,13 @@ def user(screen_name, as_json, as_yaml):
 @cli.command("user-posts")
 @click.argument("screen_name")
 @click.option("--max", "-n", "max_count", type=int, default=None, help="Max number of tweets to fetch.")
+@click.option("--cursor", type=str, default=None, help="Pagination cursor for continuing a previous user-posts request.")
 @structured_output_options
 @click.option("--output", "-o", "output_file", type=str, default=None, help="Save tweets to JSON file.")
 @click.option("--full-text", is_flag=True, help="Show full tweet text in table output.")
 @click.pass_context
-def user_posts(ctx, screen_name, max_count, as_json, as_yaml, output_file, full_text):
-    # type: (Any, str, int, bool, bool, Optional[str], bool) -> None
+def user_posts(ctx, screen_name, max_count, cursor, as_json, as_yaml, output_file, full_text):
+    # type: (Any, str, int, Optional[str], bool, bool, Optional[str], bool) -> None
     """List a user's tweets. SCREEN_NAME is the @handle (without @)."""
     screen_name = screen_name.lstrip("@")
     compact = ctx.obj.get("compact", False)
@@ -709,11 +714,42 @@ def user_posts(ctx, screen_name, max_count, as_json, as_yaml, output_file, full_
         if rich_output:
             console.print("👤 Fetching @%s's profile..." % screen_name)
         profile = client.fetch_user(screen_name)
-        _fetch_and_display(
-            lambda count: client.fetch_user_tweets(profile.id, count),
-            "@%s tweets" % screen_name, "📝", max_count, as_json, as_yaml, output_file, False, config,
-            compact=compact, full_text=full_text,
+        fetch_count = _resolve_configured_count(config, max_count)
+        if rich_output:
+            console.print("📝 Fetching @%s's tweets (%d tweets)...\n" % (screen_name, fetch_count))
+        start = time.time()
+        tweets, next_cursor = client.fetch_user_tweets(
+            profile.id,
+            fetch_count,
+            cursor=cursor,
+            return_cursor=True,
         )
+        elapsed = time.time() - start
+        if rich_output:
+            console.print("✅ Fetched %d tweets in %.1fs\n" % (len(tweets), elapsed))
+
+        if output_file:
+            Path(output_file).write_text(tweets_to_json(tweets), encoding="utf-8")
+            if rich_output:
+                console.print("💾 Saved to %s\n" % output_file)
+
+        if compact:
+            click.echo(tweets_to_compact_json(tweets))
+            return
+
+        save_tweet_cache(tweets)
+
+        if _emit_timeline_structured(tweets, next_cursor, as_json=as_json, as_yaml=as_yaml):
+            return
+
+        print_tweet_table(
+            tweets,
+            console,
+            title="@%s tweets — %d tweets" % (screen_name, len(tweets)),
+            full_text=full_text,
+        )
+        _print_show_hint()
+        console.print()
     _run_guarded(_run)
 
 
@@ -1005,21 +1041,6 @@ def article(ctx, tweet_id, as_json, as_yaml, as_markdown, output_file):
 
     print_article(article_tweet, console)
     console.print()
-
-
-@cli.command(name="daemon")
-@click.option("--stdio", is_flag=True, help="Run a persistent daemon over stdin/stdout.")
-def daemon(stdio):
-    # type: (bool) -> None
-    """Run a persistent helper for repeated machine-readable read requests."""
-    if not stdio:
-        raise click.UsageError("Use `twitter daemon --stdio`.")
-
-    from .daemon import TwitterDaemon
-
-    ensure_utf8_streams()
-    daemon = TwitterDaemon()
-    raise SystemExit(daemon.run_stdio())
 
 
 @cli.command(name="list")

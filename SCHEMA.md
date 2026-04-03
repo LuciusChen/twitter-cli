@@ -32,6 +32,7 @@ error:
 - `article` returns a single tweet object under `data`
 - `status` returns `data.authenticated` plus `data.user`
 - `whoami` returns `data.user`
+- `user-posts --cursor ...` returns tweets under `data` and may include `pagination.nextCursor`
 - write commands also support explicit `--json` / `--yaml`
 
 ## Article Fields
@@ -57,6 +58,20 @@ data:
   conversationId: "2039306742803370051"
   inReplyToStatusId: "2039306742803370051"
   inReplyToScreenName: "DashHuang"
+```
+
+## User Fields
+
+User objects may also include lightweight viewer relationship state:
+
+```yaml
+data:
+  id: "42"
+  screenName: "alice"
+  viewerFollowing: false
+  viewerFollowedBy: true
+  viewerBlocking: false
+  viewerMuting: false
 ```
 
 ## Media Fields

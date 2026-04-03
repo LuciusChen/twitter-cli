@@ -53,7 +53,6 @@ from .parser import (
     _parse_int,
     parse_timeline_response,
     parse_tweet_result,
-    parse_user_result,
 )
 
 if TYPE_CHECKING:
@@ -298,6 +297,7 @@ class TwitterClient:
 
         legacy = result.get("legacy", {})
         user_core = result.get("core", {})
+        relationship = result.get("relationship_perspectives", {})
         return UserProfile(
             id=result.get("rest_id", ""),
             name=user_core.get("name") or legacy.get("name", ""),
@@ -313,21 +313,33 @@ class TwitterClient:
             profile_image_url=result.get("avatar", {}).get("image_url")
             or legacy.get("profile_image_url_https", ""),
             created_at=legacy.get("created_at", ""),
+            viewer_following=bool(relationship.get("following")),
+            viewer_followed_by=bool(relationship.get("followed_by")),
+            viewer_blocking=bool(relationship.get("blocking")),
+            viewer_muting=bool(relationship.get("muting")),
         )
 
-    def fetch_user_tweets(self, user_id, count=20):
-        # type: (str, int) -> List[Tweet]
+    def fetch_user_tweets(self, user_id, count=20, cursor=None, return_cursor=False):
+        # type: (str, int, Optional[str], bool) -> Any
         """Fetch tweets posted by a user."""
+        def get_user_tweets_instructions(data):
+            # type: (Any) -> Any
+            instructions = _deep_get(data, "data", "user", "result", "timeline", "timeline", "instructions")
+            if instructions is None:
+                instructions = _deep_get(data, "data", "user", "result", "timeline_v2", "timeline", "instructions")
+            return instructions
+
         return self._fetch_timeline(
             "UserTweets",
             count,
-            lambda data: _deep_get(data, "data", "user", "result", "timeline_v2", "timeline", "instructions"),
+            get_user_tweets_instructions,
             extra_variables={
                 "userId": user_id,
                 "withQuickPromoteEligibilityTweetFields": True,
                 "withVoice": True,
-                "withV2Timeline": True,
             },
+            start_cursor=cursor,
+            return_cursor=return_cursor,
         )
 
     def fetch_user_likes(self, user_id, count=20):
@@ -502,18 +514,12 @@ class TwitterClient:
     def fetch_followers(self, user_id, count=20):
         # type: (str, int) -> List[UserProfile]
         """Fetch followers of a user."""
-        return self._fetch_user_list(
-            "Followers", user_id, count,
-            lambda data: _deep_get(data, "data", "user", "result", "timeline", "timeline", "instructions"),
-        )
+        return self._fetch_rest_user_collection("followers", user_id, count)
 
     def fetch_following(self, user_id, count=20):
         # type: (str, int) -> List[UserProfile]
         """Fetch users that a user is following."""
-        return self._fetch_user_list(
-            "Following", user_id, count,
-            lambda data: _deep_get(data, "data", "user", "result", "timeline", "timeline", "instructions"),
-        )
+        return self._fetch_rest_user_collection("friends", user_id, count)
 
     # ── Write operations ─────────────────────────────────────────────
 
@@ -871,69 +877,71 @@ class TwitterClient:
             return tweets[:count], continuation_cursor
         return tweets[:count]
 
-    def _fetch_user_list(self, operation_name, user_id, count, get_instructions):
-        # type: (str, str, int, Callable[[Any], Any]) -> List[UserProfile]
-        """Generic user list fetcher (for followers/following) with pagination."""
+    def _parse_rest_user_profile(self, data):
+        # type: (Dict[str, Any]) -> Optional[UserProfile]
+        """Parse a legacy REST user payload into a UserProfile."""
+        if not isinstance(data, dict):
+            return None
+        user_id = str(data.get("id_str") or data.get("id") or "")
+        if not user_id:
+            return None
+        return UserProfile(
+            id=user_id,
+            name=str(data.get("name") or ""),
+            screen_name=str(data.get("screen_name") or ""),
+            bio=str(data.get("description") or ""),
+            location=str(data.get("location") or ""),
+            url=_deep_get(data, "entities", "url", "urls", 0, "expanded_url") or "",
+            followers_count=_parse_int(data.get("followers_count"), 0),
+            following_count=_parse_int(data.get("friends_count"), 0),
+            tweets_count=_parse_int(data.get("statuses_count"), 0),
+            likes_count=_parse_int(data.get("favourites_count"), 0),
+            verified=bool(data.get("verified", False)),
+            profile_image_url=str(data.get("profile_image_url_https") or data.get("profile_image_url") or ""),
+            created_at=str(data.get("created_at") or ""),
+        )
+
+    def _fetch_rest_user_collection(self, endpoint, user_id, count):
+        # type: (str, str, int) -> List[UserProfile]
+        """Fetch a paginated REST followers/friends collection for USER_ID."""
         if count <= 0:
             return []
         count = min(count, self._max_count)
         users = []  # type: List[UserProfile]
         seen_ids = set()  # type: Set[str]
-        cursor = None  # type: Optional[str]
+        cursor = "-1"
         attempts = 0
         max_attempts = int(math.ceil(count / 20.0)) + 2
 
-        while len(users) < count and attempts < max_attempts:
+        while cursor and cursor != "0" and attempts < max_attempts and len(users) < count:
             attempts += 1
-            variables = {
-                "userId": user_id,
-                "count": min(count - len(users) + 5, 40),
-                "includePromotedContent": False,
-            }  # type: Dict[str, Any]
-            if cursor:
-                variables["cursor"] = cursor
+            query = urllib.parse.urlencode(
+                {
+                    "user_id": user_id,
+                    "count": min(count - len(users), 20),
+                    "cursor": cursor,
+                    "skip_status": "true",
+                    "include_user_entities": "false",
+                }
+            )
+            data = self._api_get("https://api.x.com/1.1/%s/list.json?%s" % (endpoint, query))
 
-            data = self._graphql_get(operation_name, variables, FEATURES)
-            instructions = get_instructions(data)
-            if not instructions:
-                logger.warning("No user list instructions found")
-                break
-
-            new_users = []  # type: List[UserProfile]
-            next_cursor = None  # type: Optional[str]
-            for instruction in instructions:
-                entries = instruction.get("entries", [])
-                for entry in entries:
-                    content = entry.get("content", {})
-                    entry_type = content.get("entryType", "")
-
-                    if entry_type == "TimelineTimelineItem":
-                        item = content.get("itemContent", {})
-                        user_results = _deep_get(item, "user_results", "result")
-                        if user_results:
-                            user = parse_user_result(user_results)
-                            if user:
-                                new_users.append(user)
-                    elif entry_type == "TimelineTimelineCursor":
-                        if content.get("cursorType") == "Bottom":
-                            next_cursor = content.get("value")
-
-            for user in new_users:
-                if user.id and user.id not in seen_ids:
+            for item in data.get("users") or []:
+                user = self._parse_rest_user_profile(item)
+                if user and user.id not in seen_ids:
                     seen_ids.add(user.id)
                     users.append(user)
 
-            if not next_cursor:
+            next_cursor = data.get("next_cursor_str") or data.get("next_cursor")
+            if next_cursor is None:
                 break
+            next_cursor = str(next_cursor)
             if next_cursor == cursor:
-                logger.debug("User list pagination stopped because cursor did not advance: %s", next_cursor)
+                logger.debug("User collection pagination stopped because cursor did not advance: %s", next_cursor)
                 break
             cursor = next_cursor
 
-            if not new_users:
-                logger.debug("User list page returned no users but exposed next cursor; continuing pagination")
-
-            if len(users) < count and self._request_delay > 0:
+            if cursor != "0" and len(users) < count and self._request_delay > 0:
                 time.sleep(self._request_delay * random.uniform(0.7, 1.5))
 
         return users[:count]

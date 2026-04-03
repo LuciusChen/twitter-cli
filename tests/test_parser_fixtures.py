@@ -92,17 +92,30 @@ def test_parse_list_timeline_fixture_with_visibility_wrapper(fixture_loader) -> 
     assert tweets[0].is_subscriber_only is True
 
 
-def test_fetch_user_list_with_fixture(monkeypatch, fixture_loader) -> None:
+def test_fetch_rest_user_collection_with_fixture(monkeypatch) -> None:
     client = _make_client()
-    payload = fixture_loader("followers_page.json")
-    monkeypatch.setattr(client, "_graphql_get", lambda operation_name, variables, features: payload)
+    payload = {
+        "users": [
+            {
+                "id_str": "123",
+                "name": "Follower One",
+                "screen_name": "follower1",
+                "description": "First follower",
+                "location": "",
+                "followers_count": 123,
+                "friends_count": 45,
+                "statuses_count": 67,
+                "favourites_count": 89,
+                "verified": True,
+                "profile_image_url_https": "https://pbs.twimg.com/profile_images/follower1_normal.jpg",
+                "created_at": "Mon Jan 01 00:00:00 +0000 2024",
+            }
+        ],
+        "next_cursor_str": "0",
+    }
+    monkeypatch.setattr(client, "_api_get", lambda url: payload)
 
-    users = client._fetch_user_list(
-        "Followers",
-        "user-id",
-        20,
-        lambda data: _deep_get(data, "data", "user", "result", "timeline", "timeline", "instructions"),
-    )
+    users = client._fetch_rest_user_collection("followers", "user-id", 20)
 
     assert len(users) == 1
     assert users[0].screen_name == "follower1"

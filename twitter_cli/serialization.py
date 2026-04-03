@@ -259,6 +259,10 @@ def user_profile_to_dict(user: UserProfile) -> Dict[str, Any]:
         "profileImageUrl": user.profile_image_url,
         "createdAt": user.created_at,
         "createdAtISO": format_iso8601(user.created_at),
+        "viewerFollowing": user.viewer_following,
+        "viewerFollowedBy": user.viewer_followed_by,
+        "viewerBlocking": user.viewer_blocking,
+        "viewerMuting": user.viewer_muting,
     }
 
 

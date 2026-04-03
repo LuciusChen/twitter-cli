@@ -106,3 +106,7 @@ class UserProfile:
     verified: bool = False
     profile_image_url: str = ""
     created_at: str = ""
+    viewer_following: bool = False
+    viewer_followed_by: bool = False
+    viewer_blocking: bool = False
+    viewer_muting: bool = False

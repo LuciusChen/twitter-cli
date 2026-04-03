@@ -66,6 +66,45 @@ class TestDeepGet:
         assert _deep_get(data) == data
 
 
+class TestFetchUser:
+    def test_fetch_user_parses_relationship_perspectives(self):
+        client = TwitterClient.__new__(TwitterClient)
+        client._graphql_get = MagicMock(return_value={
+            "data": {
+                "user": {
+                    "result": {
+                        "rest_id": "42",
+                        "legacy": {
+                            "name": "Alice",
+                            "screen_name": "alice",
+                            "description": "bio",
+                            "followers_count": 10,
+                            "friends_count": 20,
+                            "statuses_count": 30,
+                            "favourites_count": 40,
+                            "profile_image_url_https": "https://example.com/avatar.jpg",
+                            "created_at": "Mon Jan 01 00:00:00 +0000 2024",
+                        },
+                        "relationship_perspectives": {
+                            "following": True,
+                            "followed_by": True,
+                            "blocking": False,
+                            "muting": True,
+                        },
+                    }
+                }
+            }
+        })
+
+        user = client.fetch_user("alice")
+
+        assert user.screen_name == "alice"
+        assert user.viewer_following is True
+        assert user.viewer_followed_by is True
+        assert user.viewer_blocking is False
+        assert user.viewer_muting is True
+
+
 # ── _parse_int ───────────────────────────────────────────────────────────
 
 class TestParseInt:
@@ -218,6 +257,9 @@ class TestBuildGraphqlUrl:
         """Keep SearchTimeline fallback aligned with the live operation after issue #39."""
         assert FALLBACK_QUERY_IDS["SearchTimeline"] == "rkp6b4vtR9u7v3naGoOzUQ"
 
+    def test_usertweets_fallback_query_id_regression(self):
+        """Keep UserTweets fallback aligned with the current live operation."""
+        assert FALLBACK_QUERY_IDS["UserTweets"] == "q6xj5bs0hapm9309hexA_g"
 
 # ── _best_chrome_target ──────────────────────────────────────────────────
 
@@ -486,48 +528,101 @@ class TestTweetDetailFetch:
         assert cursor == "cursor-next"
         assert calls[0]["cursor"] == "cursor-prev"
 
-    def test_user_list_continues_when_cursor_advances_without_new_users(self):
+    def test_fetch_rest_user_collection_paginates_until_count(self):
         client = TwitterClient.__new__(TwitterClient)
         client._request_delay = 0.0
         client._max_count = 200
+        client._parse_rest_user_profile = TwitterClient._parse_rest_user_profile.__get__(client, TwitterClient)
 
         responses = iter(
             [
-                {"page": 1},
-                {"page": 2},
+                {
+                    "users": [],
+                    "next_cursor_str": "cursor-2",
+                },
+                {
+                    "users": [
+                        {
+                            "id_str": "user-1",
+                            "screen_name": "alice",
+                            "name": "Alice",
+                        }
+                    ],
+                    "next_cursor_str": "0",
+                },
             ]
         )
 
-        def _graphql_get(operation_name, variables, features):
+        def _api_get(url):
+            assert "followers/list.json" in url
             return next(responses)
 
-        def _parse_user_result(data):
-            return MagicMock(id=data["id"], screen_name=data["screen_name"])
+        client._api_get = _api_get
 
-        def _get_instructions(data):
-            if data["page"] == 1:
-                return [
-                    {"entries": [{"content": {"entryType": "TimelineTimelineCursor", "cursorType": "Bottom", "value": "cursor-2"}}]}
-                ]
-            return [
-                {
-                    "entries": [
-                        {
-                            "content": {
-                                "entryType": "TimelineTimelineItem",
-                                "itemContent": {"user_results": {"result": {"id": "user-1", "screen_name": "alice"}}},
-                            }
-                        }
-                    ]
-                }
-            ]
-
-        client._graphql_get = _graphql_get
-
-        with patch('twitter_cli.client.parse_user_result', side_effect=_parse_user_result):
-            users = client._fetch_user_list("Followers", "1", 1, _get_instructions)
+        users = client._fetch_rest_user_collection("followers", "1", 1)
 
         assert [user.screen_name for user in users] == ["alice"]
+
+    def test_fetch_followers_uses_rest_followers_endpoint(self):
+        client = TwitterClient("auth", "ct0", {"requestDelay": 0})
+        captured = {}
+
+        def _api_get(url):
+            captured["url"] = url
+            return {"users": [], "next_cursor_str": "0"}
+
+        client._api_get = _api_get
+
+        users = client.fetch_followers("1", 1)
+
+        assert users == []
+        assert "followers/list.json" in captured["url"]
+        assert "user_id=1" in captured["url"]
+
+    def test_fetch_following_uses_rest_friends_endpoint(self):
+        client = TwitterClient("auth", "ct0", {"requestDelay": 0})
+        captured = {}
+
+        def _api_get(url):
+            captured["url"] = url
+            return {"users": [], "next_cursor_str": "0"}
+
+        client._api_get = _api_get
+
+        users = client.fetch_following("1", 1)
+
+        assert users == []
+        assert "friends/list.json" in captured["url"]
+        assert "user_id=1" in captured["url"]
+
+    def test_fetch_user_tweets_accepts_new_and_legacy_instruction_paths(self):
+        client = TwitterClient("auth", "ct0", {"requestDelay": 0})
+        captured = {}
+
+        def _fetch_timeline(operation_name, count, get_instructions, extra_variables=None, **kwargs):
+            captured["operation_name"] = operation_name
+            captured["count"] = count
+            captured["extra_variables"] = extra_variables
+            captured["cursor"] = kwargs.get("start_cursor")
+            captured["return_cursor"] = kwargs.get("return_cursor")
+            captured["new_path"] = get_instructions(
+                {"data": {"user": {"result": {"timeline": {"timeline": {"instructions": ["new"]}}}}}}
+            )
+            captured["legacy_path"] = get_instructions(
+                {"data": {"user": {"result": {"timeline_v2": {"timeline": {"instructions": ["legacy"]}}}}}}
+            )
+            return [], "cursor-next"
+
+        client._fetch_timeline = _fetch_timeline
+
+        assert client.fetch_user_tweets("42", 5, cursor="cursor-prev", return_cursor=True) == ([], "cursor-next")
+        assert captured["operation_name"] == "UserTweets"
+        assert captured["count"] == 5
+        assert captured["extra_variables"]["userId"] == "42"
+        assert captured["cursor"] == "cursor-prev"
+        assert captured["return_cursor"] is True
+        assert captured["new_path"] == ["new"]
+        assert captured["legacy_path"] == ["legacy"]
 
     def test_fetch_lists_for_user_merges_sources(self):
         client = TwitterClient("auth", "ct0", {"requestDelay": 0})

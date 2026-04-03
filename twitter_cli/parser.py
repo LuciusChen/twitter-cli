@@ -384,6 +384,7 @@ def parse_user_result(user_data):
         return None
     legacy = user_data.get("legacy", {})
     user_core = user_data.get("core", {})
+    relationship = user_data.get("relationship_perspectives", {})
     if not legacy and not user_core:
         return None
     return UserProfile(
@@ -403,6 +404,10 @@ def parse_user_result(user_data):
             or legacy.get("profile_image_url_https", "")
         ),
         created_at=legacy.get("created_at", ""),
+        viewer_following=bool(relationship.get("following")),
+        viewer_followed_by=bool(relationship.get("followed_by")),
+        viewer_blocking=bool(relationship.get("blocking")),
+        viewer_muting=bool(relationship.get("muting")),
     )
 
 
