@@ -145,6 +145,10 @@ twitter user-posts elonmusk --max 20
 twitter user-posts elonmusk --cursor cursor-prev --json
 twitter user-posts elonmusk --full-text
 twitter user-posts elonmusk -o tweets.json
+twitter user-replies elonmusk --max 20
+twitter user-replies elonmusk --cursor cursor-prev --json
+twitter user-highlights elonmusk --max 20
+twitter user-media elonmusk --max 20
 twitter likes elonmusk --max 30          # ⚠️ own likes only (private since Jun 2024)
 twitter likes elonmusk --full-text
 twitter likes elonmusk -o likes.json
@@ -469,6 +473,10 @@ twitter user-posts elonmusk --max 20
 twitter user-posts elonmusk --cursor cursor-prev --json
 twitter user-posts elonmusk --full-text
 twitter user-posts elonmusk -o tweets.json
+twitter user-replies elonmusk --max 20
+twitter user-replies elonmusk --cursor cursor-prev --json
+twitter user-highlights elonmusk --max 20
+twitter user-media elonmusk --max 20
 twitter likes elonmusk --max 30           # ⚠️ 仅可查看自己的点赞（2024年6月起平台已私密化）
 twitter likes elonmusk --full-text
 twitter likes elonmusk -o likes.json

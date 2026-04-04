@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import logging
 import math
@@ -322,43 +321,93 @@ class TwitterClient:
     def fetch_user_tweets(self, user_id, count=20, cursor=None, return_cursor=False):
         # type: (str, int, Optional[str], bool) -> Any
         """Fetch tweets posted by a user."""
-        def get_user_tweets_instructions(data):
-            # type: (Any) -> Any
-            instructions = _deep_get(data, "data", "user", "result", "timeline", "timeline", "instructions")
-            if instructions is None:
-                instructions = _deep_get(data, "data", "user", "result", "timeline_v2", "timeline", "instructions")
-            return instructions
-
-        return self._fetch_timeline(
+        return self._fetch_user_timeline(
             "UserTweets",
+            user_id,
             count,
-            get_user_tweets_instructions,
+            cursor=cursor,
+            return_cursor=return_cursor,
             extra_variables={
-                "userId": user_id,
                 "withQuickPromoteEligibilityTweetFields": True,
                 "withVoice": True,
             },
-            start_cursor=cursor,
+        )
+
+    def fetch_user_replies(self, user_id, count=20, cursor=None, return_cursor=False, screen_name=None):
+        # type: (str, int, Optional[str], bool, Optional[str]) -> Any
+        """Fetch a user's posts and replies timeline."""
+        try:
+            return self._fetch_user_timeline(
+                "UserTweetsAndReplies",
+                user_id,
+                count,
+                cursor=cursor,
+                return_cursor=return_cursor,
+                extra_variables={
+                    "includePromotedContent": True,
+                    "withCommunity": True,
+                    "withVoice": True,
+                },
+                override_base_variables=True,
+                field_toggles={"withArticlePlainText": False},
+            )
+        except (NotFoundError, TwitterAPIError) as exc:
+            if not screen_name:
+                raise
+            if isinstance(exc, TwitterAPIError) and exc.status_code != 404:
+                raise
+            logger.info("Falling back to SearchTimeline for replies of @%s", screen_name)
+            return self.fetch_search(
+                "from:%s filter:replies" % screen_name.lstrip("@"),
+                count,
+                product="Latest",
+                cursor=cursor,
+                return_cursor=return_cursor,
+            )
+
+    def fetch_user_highlights(self, user_id, count=20, cursor=None, return_cursor=False):
+        # type: (str, int, Optional[str], bool) -> Any
+        """Fetch a user's highlights timeline."""
+        return self._fetch_user_timeline(
+            "UserHighlightsTweets",
+            user_id,
+            count,
+            cursor=cursor,
             return_cursor=return_cursor,
+            extra_variables={
+                "includePromotedContent": True,
+                "withVoice": True,
+            },
+            override_base_variables=True,
+            field_toggles={"withArticlePlainText": False},
+        )
+
+    def fetch_user_media(self, user_id, count=20, cursor=None, return_cursor=False):
+        # type: (str, int, Optional[str], bool) -> Any
+        """Fetch a user's media timeline."""
+        return self._fetch_user_timeline(
+            "UserMedia",
+            user_id,
+            count,
+            cursor=cursor,
+            return_cursor=return_cursor,
+            extra_variables={
+                "includePromotedContent": False,
+                "withClientEventToken": False,
+                "withBirdwatchNotes": False,
+                "withVoice": True,
+            },
+            override_base_variables=True,
+            field_toggles={"withArticlePlainText": False},
         )
 
     def fetch_user_likes(self, user_id, count=20):
         # type: (str, int) -> List[Tweet]
         """Fetch tweets liked by a user."""
-
-        def get_likes_instructions(data):
-            # type: (Any) -> Any
-            # New path (2024+): data.user.result.timeline.timeline.instructions
-            instructions = _deep_get(data, "data", "user", "result", "timeline", "timeline", "instructions")
-            if instructions is None:
-                # Legacy path: data.user.result.timeline_v2.timeline.instructions
-                instructions = _deep_get(data, "data", "user", "result", "timeline_v2", "timeline", "instructions")
-            return instructions
-
         return self._fetch_timeline(
             "Likes",
             count,
-            get_likes_instructions,
+            self._get_user_timeline_instructions,
             extra_variables={
                 "userId": user_id,
                 "includePromotedContent": False,
@@ -369,8 +418,43 @@ class TwitterClient:
             override_base_variables=True,
         )
 
-    def fetch_search(self, query, count=20, product="Top"):
-        # type: (str, int, str) -> List[Tweet]
+    def _get_user_timeline_instructions(self, data):
+        # type: (Any) -> Any
+        """Return timeline instructions from a user timeline response."""
+        instructions = _deep_get(data, "data", "user", "result", "timeline", "timeline", "instructions")
+        if instructions is None:
+            instructions = _deep_get(data, "data", "user", "result", "timeline_v2", "timeline", "instructions")
+        return instructions
+
+    def _fetch_user_timeline(
+        self,
+        operation_name,
+        user_id,
+        count=20,
+        cursor=None,
+        return_cursor=False,
+        extra_variables=None,
+        override_base_variables=False,
+        field_toggles=None,
+    ):
+        # type: (str, str, int, Optional[str], bool, Optional[Dict[str, Any]], bool, Optional[Dict[str, Any]]) -> Any
+        """Fetch a user timeline variant keyed by OPERATION-NAME."""
+        variables = {"userId": user_id}
+        if extra_variables:
+            variables.update(extra_variables)
+        return self._fetch_timeline(
+            operation_name,
+            count,
+            self._get_user_timeline_instructions,
+            extra_variables=variables,
+            override_base_variables=override_base_variables,
+            field_toggles=field_toggles,
+            start_cursor=cursor,
+            return_cursor=return_cursor,
+        )
+
+    def fetch_search(self, query, count=20, product="Top", cursor=None, return_cursor=False):
+        # type: (str, int, str, Optional[str], bool) -> Any
         """Search tweets by query.
 
         Args:
@@ -392,6 +476,8 @@ class TwitterClient:
             },
             override_base_variables=True,
             use_post=True,
+            start_cursor=cursor,
+            return_cursor=return_cursor,
         )
 
     def fetch_tweet_detail(self, tweet_id, count=20):
@@ -523,9 +609,11 @@ class TwitterClient:
 
     # ── Write operations ─────────────────────────────────────────────
 
-    # Supported image MIME types and max file size (5 MB)
+    # Supported image MIME types and max file sizes
     _SUPPORTED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
-    _MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB
+    _MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB (JPEG, PNG, WebP)
+    _MAX_GIF_SIZE = 15 * 1024 * 1024   # 15 MB (animated GIF)
+    _CHUNK_SIZE = 1024 * 1024          # 1 MB per APPEND segment
 
     def _write_delay(self):
         # type: () -> None
@@ -538,23 +626,26 @@ class TwitterClient:
         # type: (str) -> str
         """Upload an image file to Twitter.  Returns the media_id string.
 
-        Uses Twitter's chunked upload API (INIT → APPEND → FINALIZE).
-        Supports JPEG, PNG, GIF, and WebP images up to 5 MB.
+        Uses Twitter's chunked upload API (INIT -> APPEND -> FINALIZE).
+        Supports JPEG, PNG, GIF, and WebP.
+        - Images (JPEG/PNG/WebP): up to 5 MB, single-segment upload.
+        - GIFs: up to 15 MB, multi-segment upload in 1 MB chunks.
         """
         if not os.path.isfile(file_path):
             raise MediaUploadError("File not found: %s" % file_path)
-
-        file_size = os.path.getsize(file_path)
-        if file_size > self._MAX_IMAGE_SIZE:
-            raise MediaUploadError(
-                "File too large: %.1f MB (max %.0f MB)"
-                % (file_size / (1024 * 1024), self._MAX_IMAGE_SIZE / (1024 * 1024))
-            )
 
         media_type = mimetypes.guess_type(file_path)[0] or ""
         if media_type not in self._SUPPORTED_IMAGE_TYPES:
             raise MediaUploadError(
                 "Unsupported image format: %s (supported: jpeg, png, gif, webp)" % media_type
+            )
+
+        file_size = os.path.getsize(file_path)
+        max_size = self._MAX_GIF_SIZE if media_type == "image/gif" else self._MAX_IMAGE_SIZE
+        if file_size > max_size:
+            raise MediaUploadError(
+                "File too large: %.1f MB (max %.0f MB)"
+                % (file_size / (1024 * 1024), max_size / (1024 * 1024))
             )
 
         upload_url = "https://upload.twitter.com/i/media/upload.json"
@@ -568,6 +659,8 @@ class TwitterClient:
             "total_bytes": str(file_size),
             "media_type": media_type,
         }
+        if media_type == "image/gif":
+            init_data["media_category"] = "tweet_gif"
         resp = session.post(upload_url, headers=headers, data=init_data, timeout=30)
         if resp.status_code >= 400:
             raise MediaUploadError("INIT failed (HTTP %d): %s" % (resp.status_code, resp.text[:300]))
@@ -580,23 +673,11 @@ class TwitterClient:
             raise MediaUploadError("INIT did not return media_id")
         logger.info("Media INIT: media_id=%s", media_id)
 
-        # ── APPEND ───────────────────────────────────────────────────
-        with open(file_path, "rb") as f:
-            media_data = base64.b64encode(f.read()).decode("ascii")
-
-        headers = self._build_headers(url=upload_url, method="POST")
-        # Remove JSON content-type — curl_cffi handles multipart encoding
-        headers.pop("Content-Type", None)
-        append_data = {
-            "command": "APPEND",
-            "media_id": media_id,
-            "segment_index": "0",
-            "media_data": media_data,
-        }
-        resp = session.post(upload_url, headers=headers, data=append_data, timeout=60)
-        if resp.status_code >= 400:
-            raise MediaUploadError("APPEND failed (HTTP %d): %s" % (resp.status_code, resp.text[:300]))
-        logger.info("Media APPEND: segment 0 uploaded")
+        # ── APPEND (chunked for larger GIFs, single-segment otherwise) ──
+        if media_type == "image/gif" and file_size > self._CHUNK_SIZE:
+            self._append_chunked(session, upload_url, media_id, file_path)
+        else:
+            self._append_single(session, upload_url, media_id, file_path)
 
         # ── FINALIZE ─────────────────────────────────────────────────
         headers = self._build_headers(url=upload_url, method="POST")
@@ -611,6 +692,53 @@ class TwitterClient:
         logger.info("Media FINALIZE: media_id=%s ready", media_id)
 
         return media_id
+
+    def _append_single(self, session, upload_url, media_id, file_path):
+        # type: (Any, str, str, str) -> None
+        """Upload media in a single APPEND request using raw binary multipart."""
+        headers = self._build_headers(url=upload_url, method="POST")
+        headers.pop("Content-Type", None)
+
+        with open(file_path, "rb") as media_file:
+            files = {"media": ("media", media_file, "application/octet-stream")}
+            data = {
+                "command": "APPEND",
+                "media_id": media_id,
+                "segment_index": "0",
+            }
+            resp = session.post(upload_url, headers=headers, data=data, files=files, timeout=60)
+        if resp.status_code >= 400:
+            raise MediaUploadError("APPEND failed (HTTP %d): %s" % (resp.status_code, resp.text[:300]))
+        logger.info("Media APPEND: segment 0 uploaded (raw binary)")
+
+    def _append_chunked(self, session, upload_url, media_id, file_path):
+        # type: (Any, str, str, str) -> None
+        """Upload media in multiple APPEND requests using 1 MB chunks."""
+        segment_index = 0
+        with open(file_path, "rb") as media_file:
+            while True:
+                chunk = media_file.read(self._CHUNK_SIZE)
+                if not chunk:
+                    break
+
+                headers = self._build_headers(url=upload_url, method="POST")
+                headers.pop("Content-Type", None)
+                files = {"media": ("media", chunk, "application/octet-stream")}
+                data = {
+                    "command": "APPEND",
+                    "media_id": media_id,
+                    "segment_index": str(segment_index),
+                }
+                resp = session.post(upload_url, headers=headers, data=data, files=files, timeout=60)
+                if resp.status_code >= 400:
+                    raise MediaUploadError(
+                        "APPEND segment %d failed (HTTP %d): %s"
+                        % (segment_index, resp.status_code, resp.text[:300])
+                    )
+                logger.info("Media APPEND: segment %d uploaded (%d bytes)", segment_index, len(chunk))
+                segment_index += 1
+
+        logger.info("Media APPEND: %d segments uploaded (chunked)", segment_index)
 
     def create_tweet(self, text, reply_to_id=None, media_ids=None):
         # type: (str, Optional[str], Optional[List[str]]) -> str

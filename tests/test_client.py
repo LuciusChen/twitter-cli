@@ -261,6 +261,18 @@ class TestBuildGraphqlUrl:
         """Keep UserTweets fallback aligned with the current live operation."""
         assert FALLBACK_QUERY_IDS["UserTweets"] == "q6xj5bs0hapm9309hexA_g"
 
+    def test_usertweetsandreplies_fallback_query_id_regression(self):
+        """Keep UserTweetsAndReplies fallback aligned with the current live operation."""
+        assert FALLBACK_QUERY_IDS["UserTweetsAndReplies"] == "6hvhmQQ9zPIR8RZWHFAm4w"
+
+    def test_usermedia_fallback_query_id_regression(self):
+        """Keep UserMedia fallback aligned with the current live operation."""
+        assert FALLBACK_QUERY_IDS["UserMedia"] == "1H9ibIdchWO0_vz3wJLDTA"
+
+    def test_userhighlights_fallback_query_id_regression(self):
+        """Keep UserHighlightsTweets fallback aligned with the current live operation."""
+        assert FALLBACK_QUERY_IDS["UserHighlightsTweets"] == "70Yf8aSyhGOXaKRLJdVA2A"
+
 # ── _best_chrome_target ──────────────────────────────────────────────────
 
 class TestBestChromeTarget:
@@ -623,6 +635,134 @@ class TestTweetDetailFetch:
         assert captured["return_cursor"] is True
         assert captured["new_path"] == ["new"]
         assert captured["legacy_path"] == ["legacy"]
+
+    def test_fetch_user_replies_uses_profile_replies_operation(self):
+        client = TwitterClient("auth", "ct0", {"requestDelay": 0})
+        captured = {}
+
+        def _fetch_timeline(operation_name, count, get_instructions, extra_variables=None, **kwargs):
+            captured["operation_name"] = operation_name
+            captured["count"] = count
+            captured["extra_variables"] = extra_variables
+            captured["override_base_variables"] = kwargs.get("override_base_variables")
+            captured["field_toggles"] = kwargs.get("field_toggles")
+            captured["cursor"] = kwargs.get("start_cursor")
+            return [], "cursor-next"
+
+        client._fetch_timeline = _fetch_timeline
+
+        assert client.fetch_user_replies("42", 5, cursor="cursor-prev", return_cursor=True) == ([], "cursor-next")
+        assert captured["operation_name"] == "UserTweetsAndReplies"
+        assert captured["count"] == 5
+        assert captured["extra_variables"]["userId"] == "42"
+        assert captured["extra_variables"]["includePromotedContent"] is True
+        assert captured["extra_variables"]["withCommunity"] is True
+        assert captured["extra_variables"]["withVoice"] is True
+        assert captured["override_base_variables"] is True
+        assert captured["field_toggles"]["withArticlePlainText"] is False
+        assert captured["cursor"] == "cursor-prev"
+
+    def test_fetch_user_replies_falls_back_to_search_when_profile_endpoint_is_missing(self):
+        client = TwitterClient("auth", "ct0", {"requestDelay": 0})
+
+        with patch.object(
+            client,
+            "_fetch_user_timeline",
+            side_effect=TwitterAPIError(404, "missing"),
+        ) as mock_timeline, patch.object(
+            client,
+            "fetch_search",
+            return_value=(["reply"], "cursor-next"),
+        ) as mock_search:
+            result = client.fetch_user_replies(
+                "42",
+                5,
+                cursor="cursor-prev",
+                return_cursor=True,
+                screen_name="alice",
+            )
+
+        assert result == (["reply"], "cursor-next")
+        mock_timeline.assert_called_once()
+        mock_search.assert_called_once_with(
+            "from:alice filter:replies",
+            5,
+            product="Latest",
+            cursor="cursor-prev",
+            return_cursor=True,
+        )
+
+    def test_fetch_user_highlights_uses_profile_highlights_operation(self):
+        client = TwitterClient("auth", "ct0", {"requestDelay": 0})
+        captured = {}
+
+        def _fetch_timeline(operation_name, count, get_instructions, extra_variables=None, **kwargs):
+            captured["operation_name"] = operation_name
+            captured["count"] = count
+            captured["extra_variables"] = extra_variables
+            captured["override_base_variables"] = kwargs.get("override_base_variables")
+            captured["field_toggles"] = kwargs.get("field_toggles")
+            return [], "cursor-next"
+
+        client._fetch_timeline = _fetch_timeline
+
+        assert client.fetch_user_highlights("42", 5, return_cursor=True) == ([], "cursor-next")
+        assert captured["operation_name"] == "UserHighlightsTweets"
+        assert captured["count"] == 5
+        assert captured["extra_variables"]["userId"] == "42"
+        assert captured["extra_variables"]["includePromotedContent"] is True
+        assert captured["extra_variables"]["withVoice"] is True
+        assert captured["override_base_variables"] is True
+        assert captured["field_toggles"]["withArticlePlainText"] is False
+
+    def test_fetch_user_media_uses_profile_media_operation(self):
+        client = TwitterClient("auth", "ct0", {"requestDelay": 0})
+        captured = {}
+
+        def _fetch_timeline(operation_name, count, get_instructions, extra_variables=None, **kwargs):
+            captured["operation_name"] = operation_name
+            captured["count"] = count
+            captured["extra_variables"] = extra_variables
+            captured["override_base_variables"] = kwargs.get("override_base_variables")
+            captured["field_toggles"] = kwargs.get("field_toggles")
+            return [], "cursor-next"
+
+        client._fetch_timeline = _fetch_timeline
+
+        assert client.fetch_user_media("42", 5, return_cursor=True) == ([], "cursor-next")
+        assert captured["operation_name"] == "UserMedia"
+        assert captured["count"] == 5
+        assert captured["extra_variables"]["userId"] == "42"
+        assert captured["extra_variables"]["includePromotedContent"] is False
+        assert captured["extra_variables"]["withClientEventToken"] is False
+        assert captured["extra_variables"]["withBirdwatchNotes"] is False
+        assert captured["extra_variables"]["withVoice"] is True
+        assert captured["override_base_variables"] is True
+        assert captured["field_toggles"]["withArticlePlainText"] is False
+
+    def test_fetch_search_accepts_cursor_and_returns_pagination(self):
+        client = TwitterClient("auth", "ct0", {"requestDelay": 0})
+        captured = {}
+
+        def _fetch_timeline(operation_name, count, get_instructions, extra_variables=None, **kwargs):
+            captured["operation_name"] = operation_name
+            captured["count"] = count
+            captured["extra_variables"] = extra_variables
+            captured["use_post"] = kwargs.get("use_post")
+            captured["start_cursor"] = kwargs.get("start_cursor")
+            captured["return_cursor"] = kwargs.get("return_cursor")
+            return [], "cursor-next"
+
+        client._fetch_timeline = _fetch_timeline
+
+        assert client.fetch_search("from:alice filter:replies", 5, product="Latest", cursor="cursor-prev", return_cursor=True) == ([], "cursor-next")
+        assert captured["operation_name"] == "SearchTimeline"
+        assert captured["count"] == 5
+        assert captured["extra_variables"]["rawQuery"] == "from:alice filter:replies"
+        assert captured["extra_variables"]["product"] == "Latest"
+        assert captured["use_post"] is True
+        assert captured["start_cursor"] == "cursor-prev"
+        assert captured["return_cursor"] is True
 
     def test_fetch_lists_for_user_merges_sources(self):
         client = TwitterClient("auth", "ct0", {"requestDelay": 0})
@@ -1507,7 +1647,7 @@ class TestUploadMedia:
 
     @patch("twitter_cli.client._get_cffi_session")
     def test_upload_media_init_append_finalize(self, mock_session, tmp_path):
-        """Happy path: INIT → APPEND → FINALIZE returns media_id."""
+        """Happy path: INIT -> APPEND -> FINALIZE returns media_id."""
         img = tmp_path / "photo.jpg"
         img.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)  # fake JPEG
 
@@ -1532,6 +1672,13 @@ class TestUploadMedia:
 
         assert media_id == "12345"
         assert sess.post.call_count == 3
+        init_call = sess.post.call_args_list[0]
+        append_call = sess.post.call_args_list[1]
+        assert init_call.kwargs["data"]["media_type"] == "image/jpeg"
+        assert "media_category" not in init_call.kwargs["data"]
+        assert "media_data" not in append_call.kwargs["data"]
+        assert "files" in append_call.kwargs
+        assert append_call.kwargs["files"]["media"][2] == "application/octet-stream"
 
     def test_upload_media_file_not_found(self):
         from twitter_cli.exceptions import MediaUploadError
@@ -1559,6 +1706,67 @@ class TestUploadMedia:
         client = self._make_client()
         with pytest.raises(MediaUploadError, match="Unsupported image format"):
             client.upload_media(str(txt))
+
+    @patch("twitter_cli.client._get_cffi_session")
+    def test_upload_media_chunked_gif_uses_tweet_gif_category(self, mock_session, tmp_path):
+        gif = tmp_path / "anim.gif"
+        gif.write_bytes(b"GIF89a" + b"\x00" * ((2 * 1024 * 1024) + 123))
+
+        mock_resp_init = MagicMock(status_code=200, text='{"media_id_string": "gif123"}')
+        mock_resp_append1 = MagicMock(status_code=200, text="")
+        mock_resp_append2 = MagicMock(status_code=200, text="")
+        mock_resp_append3 = MagicMock(status_code=200, text="")
+        mock_resp_finalize = MagicMock(status_code=200, text='{"media_id_string": "gif123"}')
+
+        sess = MagicMock()
+        sess.post = MagicMock(
+            side_effect=[
+                mock_resp_init,
+                mock_resp_append1,
+                mock_resp_append2,
+                mock_resp_append3,
+                mock_resp_finalize,
+            ]
+        )
+        mock_session.return_value = sess
+
+        client = self._make_client()
+        media_id = client.upload_media(str(gif))
+
+        assert media_id == "gif123"
+        assert sess.post.call_count == 5
+        init_call = sess.post.call_args_list[0]
+        append_calls = sess.post.call_args_list[1:4]
+        finalize_call = sess.post.call_args_list[4]
+
+        assert init_call.kwargs["data"]["media_type"] == "image/gif"
+        assert init_call.kwargs["data"]["media_category"] == "tweet_gif"
+        assert [call.kwargs["data"]["segment_index"] for call in append_calls] == ["0", "1", "2"]
+        assert [len(call.kwargs["files"]["media"][1]) for call in append_calls] == [
+            1024 * 1024,
+            1024 * 1024,
+            129,
+        ]
+        assert finalize_call.kwargs["data"]["command"] == "FINALIZE"
+
+    def test_upload_media_accepts_larger_gif_limit(self, tmp_path):
+        gif = tmp_path / "big.gif"
+        gif.write_bytes(b"GIF89a" + b"\x00" * (6 * 1024 * 1024))
+
+        client = self._make_client()
+
+        with patch.object(client, "_append_chunked") as mock_append, \
+             patch("twitter_cli.client._get_cffi_session") as mock_session:
+            mock_resp_init = MagicMock(status_code=200, text='{"media_id_string": "gif123"}')
+            mock_resp_finalize = MagicMock(status_code=200, text='{"media_id_string": "gif123"}')
+            sess = MagicMock()
+            sess.post = MagicMock(side_effect=[mock_resp_init, mock_resp_finalize])
+            mock_session.return_value = sess
+
+            media_id = client.upload_media(str(gif))
+
+        assert media_id == "gif123"
+        mock_append.assert_called_once()
 
 
 # ── create_tweet with media_ids ──────────────────────────────────────────

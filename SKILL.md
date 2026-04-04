@@ -173,6 +173,9 @@ twitter list 1539453138322673664       # List timeline
 twitter list 1539453138322673664 --full-text
 twitter user-posts elonmusk --max 20   # User's tweets
 twitter user-posts elonmusk --full-text
+twitter user-replies elonmusk --max 20 # User's replies
+twitter user-highlights elonmusk --max 20 # User's highlights
+twitter user-media elonmusk --max 20   # User's media timeline
 twitter likes elonmusk --max 30        # User's likes (own only, see note)
 twitter likes elonmusk --full-text
 twitter followers elonmusk --max 50    # Followers

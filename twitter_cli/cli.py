@@ -705,9 +705,41 @@ def user(screen_name, as_json, as_yaml):
 def user_posts(ctx, screen_name, max_count, cursor, as_json, as_yaml, output_file, full_text):
     # type: (Any, str, int, Optional[str], bool, bool, Optional[str], bool) -> None
     """List a user's tweets. SCREEN_NAME is the @handle (without @)."""
+    _run_user_timeline_command(
+        ctx,
+        screen_name,
+        max_count,
+        cursor,
+        as_json,
+        as_yaml,
+        output_file,
+        full_text,
+        fetch_method_name="fetch_user_tweets",
+        label="tweets",
+        emoji="📝",
+    )
+
+
+def _run_user_timeline_command(
+    ctx,
+    screen_name,
+    max_count,
+    cursor,
+    as_json,
+    as_yaml,
+    output_file,
+    full_text,
+    *,
+    fetch_method_name,
+    label,
+    emoji,
+):
+    # type: (Any, str, Optional[int], Optional[str], bool, bool, Optional[str], bool, str, str, str) -> None
+    """Run a profile timeline command backed by one of TwitterClient's user timeline fetchers."""
     screen_name = screen_name.lstrip("@")
     compact = ctx.obj.get("compact", False)
     config = load_config()
+
     def _run():
         rich_output = use_rich_output(as_json=as_json, as_yaml=as_yaml, compact=compact)
         client = _get_client(config, quiet=not rich_output)
@@ -716,17 +748,22 @@ def user_posts(ctx, screen_name, max_count, cursor, as_json, as_yaml, output_fil
         profile = client.fetch_user(screen_name)
         fetch_count = _resolve_configured_count(config, max_count)
         if rich_output:
-            console.print("📝 Fetching @%s's tweets (%d tweets)...\n" % (screen_name, fetch_count))
+            console.print("%s Fetching @%s's %s (%d tweets)...\n" % (emoji, screen_name, label, fetch_count))
         start = time.time()
-        tweets, next_cursor = client.fetch_user_tweets(
+        fetch_kwargs = {
+            "cursor": cursor,
+            "return_cursor": True,
+        }
+        if fetch_method_name == "fetch_user_replies":
+            fetch_kwargs["screen_name"] = screen_name
+        tweets, next_cursor = getattr(client, fetch_method_name)(
             profile.id,
             fetch_count,
-            cursor=cursor,
-            return_cursor=True,
+            **fetch_kwargs,
         )
         elapsed = time.time() - start
         if rich_output:
-            console.print("✅ Fetched %d tweets in %.1fs\n" % (len(tweets), elapsed))
+            console.print("✅ Fetched %d %s in %.1fs\n" % (len(tweets), label, elapsed))
 
         if output_file:
             Path(output_file).write_text(tweets_to_json(tweets), encoding="utf-8")
@@ -745,12 +782,90 @@ def user_posts(ctx, screen_name, max_count, cursor, as_json, as_yaml, output_fil
         print_tweet_table(
             tweets,
             console,
-            title="@%s tweets — %d tweets" % (screen_name, len(tweets)),
+            title="@%s %s — %d tweets" % (screen_name, label, len(tweets)),
             full_text=full_text,
         )
         _print_show_hint()
         console.print()
     _run_guarded(_run)
+
+
+@cli.command("user-replies")
+@click.argument("screen_name")
+@click.option("--max", "-n", "max_count", type=int, default=None, help="Max number of tweets to fetch.")
+@click.option("--cursor", type=str, default=None, help="Pagination cursor for continuing a previous user-replies request.")
+@structured_output_options
+@click.option("--output", "-o", "output_file", type=str, default=None, help="Save tweets to JSON file.")
+@click.option("--full-text", is_flag=True, help="Show full tweet text in table output.")
+@click.pass_context
+def user_replies(ctx, screen_name, max_count, cursor, as_json, as_yaml, output_file, full_text):
+    # type: (Any, str, int, Optional[str], bool, bool, Optional[str], bool) -> None
+    """List a user's posts and replies. SCREEN_NAME is the @handle (without @)."""
+    _run_user_timeline_command(
+        ctx,
+        screen_name,
+        max_count,
+        cursor,
+        as_json,
+        as_yaml,
+        output_file,
+        full_text,
+        fetch_method_name="fetch_user_replies",
+        label="replies",
+        emoji="↩️",
+    )
+
+
+@cli.command("user-highlights")
+@click.argument("screen_name")
+@click.option("--max", "-n", "max_count", type=int, default=None, help="Max number of tweets to fetch.")
+@click.option("--cursor", type=str, default=None, help="Pagination cursor for continuing a previous user-highlights request.")
+@structured_output_options
+@click.option("--output", "-o", "output_file", type=str, default=None, help="Save tweets to JSON file.")
+@click.option("--full-text", is_flag=True, help="Show full tweet text in table output.")
+@click.pass_context
+def user_highlights(ctx, screen_name, max_count, cursor, as_json, as_yaml, output_file, full_text):
+    # type: (Any, str, int, Optional[str], bool, bool, Optional[str], bool) -> None
+    """List a user's highlight posts. SCREEN_NAME is the @handle (without @)."""
+    _run_user_timeline_command(
+        ctx,
+        screen_name,
+        max_count,
+        cursor,
+        as_json,
+        as_yaml,
+        output_file,
+        full_text,
+        fetch_method_name="fetch_user_highlights",
+        label="highlights",
+        emoji="✨",
+    )
+
+
+@cli.command("user-media")
+@click.argument("screen_name")
+@click.option("--max", "-n", "max_count", type=int, default=None, help="Max number of tweets to fetch.")
+@click.option("--cursor", type=str, default=None, help="Pagination cursor for continuing a previous user-media request.")
+@structured_output_options
+@click.option("--output", "-o", "output_file", type=str, default=None, help="Save tweets to JSON file.")
+@click.option("--full-text", is_flag=True, help="Show full tweet text in table output.")
+@click.pass_context
+def user_media(ctx, screen_name, max_count, cursor, as_json, as_yaml, output_file, full_text):
+    # type: (Any, str, int, Optional[str], bool, bool, Optional[str], bool) -> None
+    """List a user's media posts. SCREEN_NAME is the @handle (without @)."""
+    _run_user_timeline_command(
+        ctx,
+        screen_name,
+        max_count,
+        cursor,
+        as_json,
+        as_yaml,
+        output_file,
+        full_text,
+        fetch_method_name="fetch_user_media",
+        label="media",
+        emoji="🖼️",
+    )
 
 
 @cli.command()

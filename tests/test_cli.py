@@ -154,6 +154,82 @@ def test_cli_user_posts_accepts_cursor_and_emits_pagination(monkeypatch) -> None
     assert payload["pagination"]["nextCursor"] == "cursor-next"
 
 
+@pytest.mark.parametrize(
+    ("command_name", "fetch_method_name"),
+    [
+        ("user-replies", "fetch_user_replies"),
+        ("user-highlights", "fetch_user_highlights"),
+        ("user-media", "fetch_user_media"),
+    ],
+)
+def test_cli_profile_subviews_accept_cursor_and_emit_pagination(
+    monkeypatch, command_name: str, fetch_method_name: str
+) -> None:
+    class FakeClient:
+        def fetch_user(self, screen_name: str) -> UserProfile:
+            assert screen_name == "alice"
+            return UserProfile(id="42", name="Alice", screen_name="alice")
+
+        def fetch_user_replies(
+            self,
+            user_id: str,
+            count: int,
+            cursor: str | None = None,
+            return_cursor: bool = False,
+            screen_name: str | None = None,
+        ):
+            assert fetch_method_name == "fetch_user_replies"
+            assert user_id == "42"
+            assert count == 20
+            assert cursor == "cursor-prev"
+            assert return_cursor is True
+            assert screen_name == "alice"
+            return [], "cursor-next"
+
+        def fetch_user_highlights(
+            self,
+            user_id: str,
+            count: int,
+            cursor: str | None = None,
+            return_cursor: bool = False,
+        ):
+            assert fetch_method_name == "fetch_user_highlights"
+            assert user_id == "42"
+            assert count == 20
+            assert cursor == "cursor-prev"
+            assert return_cursor is True
+            return [], "cursor-next"
+
+        def fetch_user_media(
+            self,
+            user_id: str,
+            count: int,
+            cursor: str | None = None,
+            return_cursor: bool = False,
+        ):
+            assert fetch_method_name == "fetch_user_media"
+            assert user_id == "42"
+            assert count == 20
+            assert cursor == "cursor-prev"
+            assert return_cursor is True
+            return [], "cursor-next"
+
+    monkeypatch.setattr("twitter_cli.cli._get_client", lambda config=None, quiet=False: FakeClient())
+    monkeypatch.setattr(
+        "twitter_cli.cli.load_config",
+        lambda: {"fetch": {"count": 20}, "filter": {}, "rateLimit": {}},
+    )
+    runner = CliRunner()
+
+    result = runner.invoke(cli, [command_name, "alice", "--cursor", "cursor-prev", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["ok"] is True
+    assert payload["data"] == []
+    assert payload["pagination"]["nextCursor"] == "cursor-next"
+
+
 def test_print_tweet_table_truncates_text_by_default(tweet_factory) -> None:
     long_text = "A" * 140
     console = Console(record=True, width=400)
