@@ -136,6 +136,7 @@ twitter article 1234567890 --output article.md
 
 # List timeline
 twitter list 1539453138322673664
+twitter list 1539453138322673664 --cursor "<next-cursor-from-previous-response>"
 twitter list 1539453138322673664 --full-text
 twitter lists --json                     # your owned and followed lists
 
@@ -179,11 +180,11 @@ twitter follow elonmusk --json
 twitter-cli uses this auth priority:
 
 1. **Environment variables**: `TWITTER_AUTH_TOKEN` + `TWITTER_CT0`
-2. **Browser cookies** (recommended): auto-extract from Arc/Chrome/Edge/Firefox/Brave
+2. **Browser cookies** (recommended): auto-extract from Arc/Dia/Chrome/Edge/Firefox/Brave/Chromium
 
 Browser extraction is recommended — it forwards ALL Twitter cookies (not just `auth_token` + `ct0`) and aligns request headers with your local runtime, which is closer to normal browser traffic than minimal cookie auth.
 
-**Chrome multi-profile**: All Chrome profiles are scanned automatically. To specify a profile:
+**Chromium multi-profile**: All discovered Chromium profiles are scanned automatically. To specify a profile:
 
 ```bash
 TWITTER_CHROME_PROFILE="Profile 2" twitter feed
@@ -192,8 +193,16 @@ TWITTER_CHROME_PROFILE="Profile 2" twitter feed
 **Browser priority:** If you have multiple browsers, set `TWITTER_BROWSER` to try a specific browser first:
 
 ```bash
-TWITTER_BROWSER=chrome twitter feed    # Supported: arc, chrome, edge, firefox, brave
+TWITTER_BROWSER=dia twitter feed       # Supported: arc, dia, chrome, edge, firefox, brave, chromium
 ```
+
+**Custom Chromium browsers:** If your browser is not in the built-in list, point twitter-cli at its `User Data` directory:
+
+```bash
+TWITTER_CHROMIUM_USER_DATA_DIR="$HOME/Library/Application Support/Dia/User Data" twitter feed
+```
+
+On macOS, if cookie decryption fails for a custom Chromium browser, also set `TWITTER_CHROMIUM_KEYCHAIN_SERVICE` and `TWITTER_CHROMIUM_KEYCHAIN_USER` to that browser's Keychain item, for example `Dia Safe Storage` / `Dia`.
 
 After loading cookies, the CLI performs lightweight verification. Commands that require account access fail fast on clear auth errors (`401/403`).
 
@@ -283,7 +292,8 @@ Mode behavior:
 ### Troubleshooting
 
 - `No Twitter cookies found`
-  - Ensure you are logged in to `x.com` in a supported browser (Arc/Chrome/Edge/Firefox/Brave).
+  - Ensure you are logged in to `x.com` in a supported browser (Arc/Dia/Chrome/Edge/Firefox/Brave/Chromium).
+  - For other Chromium-based browsers, set `TWITTER_CHROMIUM_USER_DATA_DIR` to the browser's `User Data` directory.
   - Or set `TWITTER_AUTH_TOKEN` and `TWITTER_CT0` manually.
   - Run with `-v` to see browser extraction diagnostics.
 
@@ -464,6 +474,7 @@ twitter article 1234567890 --output article.md
 
 # 列表时间线
 twitter list 1539453138322673664
+twitter list 1539453138322673664 --cursor "<上一页返回的 nextCursor>"
 twitter list 1539453138322673664 --full-text
 twitter lists --json                     # 当前账号自己的和已关注的 lists
 
@@ -507,11 +518,11 @@ twitter follow elonmusk --json
 认证优先级：
 
 1. **环境变量**：`TWITTER_AUTH_TOKEN` + `TWITTER_CT0`
-2. **浏览器提取**（推荐）：Arc/Chrome/Edge/Firefox/Brave 全量 Cookie 提取
+2. **浏览器提取**（推荐）：Arc/Dia/Chrome/Edge/Firefox/Brave/Chromium 全量 Cookie 提取
 
 推荐使用浏览器提取方式，会转发所有 Twitter Cookie，并按本机运行环境生成语言和平台请求头；它比仅发送 `auth_token` + `ct0` 更接近普通浏览器流量，但不等于完整浏览器自动化。
 
-**Chrome 多 Profile 支持**：会自动遍历所有 Chrome profile。也可以通过环境变量指定：
+**Chromium 多 Profile 支持**：会自动遍历发现的 Chromium profile。也可以通过环境变量指定：
 
 ```bash
 TWITTER_CHROME_PROFILE="Profile 2" twitter feed
@@ -520,8 +531,16 @@ TWITTER_CHROME_PROFILE="Profile 2" twitter feed
 **浏览器优先级**：如果有多个浏览器，可通过 `TWITTER_BROWSER` 指定优先尝试的浏览器：
 
 ```bash
-TWITTER_BROWSER=chrome twitter feed    # 支持: arc, chrome, edge, firefox, brave
+TWITTER_BROWSER=dia twitter feed       # 支持: arc, dia, chrome, edge, firefox, brave, chromium
 ```
+
+**自定义 Chromium 浏览器**：如果浏览器不在内置列表里，可直接指定它的 `User Data` 目录：
+
+```bash
+TWITTER_CHROMIUM_USER_DATA_DIR="$HOME/Library/Application Support/Dia/User Data" twitter feed
+```
+
+macOS 上如果自定义 Chromium 浏览器解密失败，可再设置 `TWITTER_CHROMIUM_KEYCHAIN_SERVICE` 和 `TWITTER_CHROMIUM_KEYCHAIN_USER`，例如 `Dia Safe Storage` / `Dia`。
 
 ### 代理支持
 
@@ -561,7 +580,7 @@ score = likes_w * likes
 
 ### 常见问题
 
-- 报错 `No Twitter cookies found`：请先登录 `x.com`，并确认浏览器为 Arc/Chrome/Edge/Firefox/Brave 之一，或手动设置环境变量。
+- 报错 `No Twitter cookies found`：请先登录 `x.com`，并确认浏览器为 Arc/Dia/Chrome/Edge/Firefox/Brave/Chromium 之一；其他 Chromium 系浏览器可设置 `TWITTER_CHROMIUM_USER_DATA_DIR`，或手动设置环境变量。
 - 如需查看浏览器提取细节，可加 `-v` 打开诊断日志。
 - 报错 `Cookie expired or invalid`：Cookie 过期，重新登录后重试。
 - 报错 `Unable to get key for cookie decryption`（macOS Keychain 问题）：

@@ -156,6 +156,7 @@ class TestExtractMedia:
                         "type": "photo",
                         "media_url_https": "https://pbs.twimg.com/img.jpg",
                         "original_info": {"width": 1200, "height": 800},
+                        "ext_alt_text": "A black cat sitting on a window sill",
                     }
                 ]
             }
@@ -165,6 +166,7 @@ class TestExtractMedia:
         assert media[0].type == "photo"
         assert media[0].url == "https://pbs.twimg.com/img.jpg"
         assert media[0].width == 1200
+        assert media[0].alt_text == "A black cat sitting on a window sill"
 
     def test_video_picks_highest_bitrate(self):
         legacy = {
@@ -255,7 +257,7 @@ class TestBuildGraphqlUrl:
 
     def test_searchtimeline_fallback_query_id_regression(self):
         """Keep SearchTimeline fallback aligned with the live operation after issue #39."""
-        assert FALLBACK_QUERY_IDS["SearchTimeline"] == "rkp6b4vtR9u7v3naGoOzUQ"
+        assert FALLBACK_QUERY_IDS["SearchTimeline"] == "VhUd6vHVmLBcw0uX-6jMLA"
 
     def test_usertweets_fallback_query_id_regression(self):
         """Keep UserTweets fallback aligned with the current live operation."""
@@ -539,6 +541,34 @@ class TestTweetDetailFetch:
         assert [item.id for item in tweets] == ["tweet-1"]
         assert cursor == "cursor-next"
         assert calls[0]["cursor"] == "cursor-prev"
+
+    def test_fetch_list_timeline_accepts_cursor_and_returns_cursor(self):
+        client = TwitterClient.__new__(TwitterClient)
+        client._request_delay = 0.0
+        client._max_count = 200
+
+        calls = []
+
+        def _graphql_get(operation_name, variables, features, field_toggles=None):
+            calls.append((operation_name, variables.copy()))
+            return {"page": 1}
+
+        client._graphql_get = _graphql_get
+
+        tweet = MagicMock(id="tweet-1")
+        with patch('twitter_cli.client.parse_timeline_response', return_value=([tweet], "cursor-next")):
+            tweets, cursor = client.fetch_list_timeline(
+                "list-1",
+                1,
+                cursor="cursor-prev",
+                return_cursor=True,
+            )
+
+        assert [item.id for item in tweets] == ["tweet-1"]
+        assert cursor == "cursor-next"
+        assert calls[0][0] == "ListLatestTweetsTimeline"
+        assert calls[0][1]["listId"] == "list-1"
+        assert calls[0][1]["cursor"] == "cursor-prev"
 
     def test_fetch_rest_user_collection_paginates_until_count(self):
         client = TwitterClient.__new__(TwitterClient)
@@ -1609,9 +1639,13 @@ class TestParseUserResult:
                 "core": {
                     "name": "Ding Yi",
                     "screen_name": "dingyi",
+                    "created_at": "Tue Mar 21 17:25:43 +0000 2023",
                 },
                 "avatar": {
                     "image_url": "https://pbs.twimg.com/profile_images/demo.jpg",
+                },
+                "location": {
+                    "location": "Earth",
                 },
                 "legacy": {
                     "name": "",
@@ -1625,6 +1659,12 @@ class TestParseUserResult:
         assert user.name == "Ding Yi"
         assert user.screen_name == "dingyi"
         assert user.profile_image_url == "https://pbs.twimg.com/profile_images/demo.jpg"
+        assert user.location == "Earth"
+        assert user.created_at == "Tue Mar 21 17:25:43 +0000 2023"
+
+    def test_parse_user_result_requires_rest_id(self):
+        assert parse_user_result({"core": {"name": "Anon", "screen_name": "anon"}}) is None
+        assert parse_user_result({}) is None
 
 
 # ── upload_media ─────────────────────────────────────────────────────────

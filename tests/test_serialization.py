@@ -106,6 +106,7 @@ def test_tweet_roundtrip_preserves_media_preview_and_variants(tweet_factory) -> 
                 preview_url="https://preview.jpg",
                 width=1920,
                 height=1080,
+                alt_text="Demo clip alt text",
                 variants=[
                     MediaVariant(url="https://high.mp4", bitrate=2176000),
                     MediaVariant(url="https://low.mp4", bitrate=832000),
@@ -116,10 +117,12 @@ def test_tweet_roundtrip_preserves_media_preview_and_variants(tweet_factory) -> 
 
     payload = tweet_to_dict(tweet)
     assert payload["media"][0]["previewUrl"] == "https://preview.jpg"
+    assert payload["media"][0]["altText"] == "Demo clip alt text"
     assert payload["media"][0]["variants"][1]["url"] == "https://low.mp4"
 
     restored = tweet_from_dict(payload)
     assert restored.media[0].preview_url == "https://preview.jpg"
+    assert restored.media[0].alt_text == "Demo clip alt text"
     assert [variant.url for variant in restored.media[0].variants] == [
         "https://high.mp4",
         "https://low.mp4",

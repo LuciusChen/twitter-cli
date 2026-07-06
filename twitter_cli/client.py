@@ -296,22 +296,23 @@ class TwitterClient:
 
         legacy = result.get("legacy", {})
         user_core = result.get("core", {})
+        avatar = result.get("avatar", {})
+        location_obj = result.get("location", {})
         relationship = result.get("relationship_perspectives", {})
         return UserProfile(
             id=result.get("rest_id", ""),
             name=user_core.get("name") or legacy.get("name", ""),
             screen_name=user_core.get("screen_name") or legacy.get("screen_name", screen_name),
             bio=legacy.get("description", ""),
-            location=legacy.get("location", ""),
+            location=location_obj.get("location") or legacy.get("location", ""),
             url=_deep_get(legacy, "entities", "url", "urls", 0, "expanded_url") or "",
             followers_count=_parse_int(legacy.get("followers_count"), 0),
             following_count=_parse_int(legacy.get("friends_count"), 0),
             tweets_count=_parse_int(legacy.get("statuses_count"), 0),
             likes_count=_parse_int(legacy.get("favourites_count"), 0),
             verified=bool(result.get("is_blue_verified") or legacy.get("verified", False)),
-            profile_image_url=result.get("avatar", {}).get("image_url")
-            or legacy.get("profile_image_url_https", ""),
-            created_at=legacy.get("created_at", ""),
+            profile_image_url=avatar.get("image_url") or legacy.get("profile_image_url_https", ""),
+            created_at=user_core.get("created_at") or legacy.get("created_at", ""),
             viewer_following=bool(relationship.get("following")),
             viewer_followed_by=bool(relationship.get("followed_by")),
             viewer_blocking=bool(relationship.get("blocking")),
@@ -547,8 +548,8 @@ class TwitterClient:
         logger.info("fetch_article: tweet_id=%s", tweet_id)
         return tweet
 
-    def fetch_list_timeline(self, list_id, count=20):
-        # type: (str, int) -> List[Tweet]
+    def fetch_list_timeline(self, list_id, count=20, cursor=None, return_cursor=False):
+        # type: (str, int, Optional[str], bool) -> Any
         """Fetch tweets from a Twitter List."""
         return self._fetch_timeline(
             "ListLatestTweetsTimeline",
@@ -556,6 +557,8 @@ class TwitterClient:
             lambda data: _deep_get(data, "data", "list", "tweets_timeline", "timeline", "instructions"),
             extra_variables={"listId": list_id},
             override_base_variables=True,
+            start_cursor=cursor,
+            return_cursor=return_cursor,
         )
 
     def fetch_my_lists(self):

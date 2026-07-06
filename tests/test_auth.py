@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from twitter_cli import auth
+from twitter_cli.exceptions import AuthenticationError
 
 
 def test_get_cookies_prefers_env(monkeypatch) -> None:
@@ -112,6 +113,26 @@ def test_load_from_env_logs_incomplete_env(monkeypatch, caplog) -> None:
     assert "Environment cookies incomplete" in caplog.text
 
 
+def test_get_browser_order_accepts_dia(monkeypatch) -> None:
+    monkeypatch.setenv("TWITTER_BROWSER", "dia")
+    monkeypatch.delenv("TWITTER_CHROMIUM_USER_DATA_DIR", raising=False)
+
+    order = auth._get_browser_order()
+
+    assert order[0] == "dia"
+    assert "chrome" in order
+
+
+def test_get_browser_order_prepends_custom_chromium_dir(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("TWITTER_BROWSER", raising=False)
+    monkeypatch.setenv("TWITTER_CHROMIUM_USER_DATA_DIR", str(tmp_path))
+
+    order = auth._get_browser_order()
+
+    assert order[0] == "custom-chromium"
+    assert "dia" in order
+
+
 def test_extract_cookies_from_jar_logs_missing_required_cookies(caplog) -> None:
     class Cookie:
         def __init__(self, domain: str, name: str, value: str) -> None:
@@ -183,7 +204,9 @@ def test_extract_via_subprocess_script_includes_arc(monkeypatch) -> None:
     cookies, diagnostics = auth._extract_via_subprocess()
 
     assert cookies is None
-    assert '"arc": browser_cookie3.arc' in seen["script"]
+    assert '"arc": os.path.join("Arc", "User Data")' in seen["script"]
+    assert '"dia": os.path.join("Dia", "User Data")' in seen["script"]
+    assert 'CUSTOM_CHROMIUM_BROWSER = "custom-chromium"' in seen["script"]
 
 
 def test_extract_via_subprocess_retries_uv_when_current_env_has_no_output(monkeypatch) -> None:
@@ -328,6 +351,40 @@ def test_iter_chrome_cookie_files_env_override(monkeypatch, tmp_path) -> None:
     assert "Profile 5" in paths[0]
 
 
+def test_iter_chrome_cookie_files_supports_dia_on_macos(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(auth.sys, "platform", "darwin")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("TWITTER_CHROME_PROFILE", raising=False)
+
+    dia_profile = tmp_path / "Library" / "Application Support" / "Dia" / "User Data" / "Profile 1"
+    dia_profile.mkdir(parents=True)
+    (dia_profile / "Cookies").touch()
+
+    paths = auth._iter_chrome_cookie_files("dia")
+
+    assert len(paths) == 1
+    assert paths[0].endswith("Dia/User Data/Profile 1/Cookies")
+
+
+def test_iter_chrome_cookie_files_supports_custom_chromium_user_data(monkeypatch, tmp_path) -> None:
+    root = tmp_path / "Custom Browser" / "User Data"
+    network_dir = root / "Profile 1" / "Network"
+    network_dir.mkdir(parents=True)
+    cookie_file = network_dir / "Cookies"
+    cookie_file.touch()
+    local_state = root / "Local State"
+    local_state.touch()
+
+    monkeypatch.setenv("TWITTER_CHROMIUM_USER_DATA_DIR", str(root))
+    monkeypatch.delenv("TWITTER_CHROME_PROFILE", raising=False)
+
+    paths = auth._iter_chrome_cookie_files("custom-chromium")
+
+    assert paths == [str(cookie_file)]
+    assert auth._profile_name_from_cookie_file(str(cookie_file)) == "Profile 1"
+    assert auth._chromium_key_file_for_cookie("custom-chromium", str(cookie_file)) == str(local_state)
+
+
 def test_iter_chrome_cookie_files_edge_linux_uses_microsoft_edge_path(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(auth.sys, "platform", "linux")
     edge_dir = tmp_path / ".config" / "microsoft-edge"
@@ -407,6 +464,46 @@ def test_extract_in_process_tries_multiple_profiles(monkeypatch, tmp_path) -> No
     assert cookies["ct0"] == "csrf456"
 
 
+def test_extract_in_process_supports_dia_chromium_based_loader(monkeypatch, tmp_path) -> None:
+    class Cookie:
+        def __init__(self, domain: str, name: str, value: str) -> None:
+            self.domain = domain
+            self.name = name
+            self.value = value
+
+    seen = {}
+
+    class FakeChromiumBased:
+        def __init__(self, **kwargs) -> None:
+            seen.update(kwargs)
+
+        def load(self):
+            return [
+                Cookie(".x.com", "auth_token", "dia-token"),
+                Cookie(".x.com", "ct0", "dia-csrf"),
+            ]
+
+    cookie_file = str(tmp_path / "Profile 1" / "Cookies")
+    local_state = str(tmp_path / "Local State")
+
+    fake_module = SimpleNamespace(ChromiumBased=FakeChromiumBased)
+    monkeypatch.setitem(sys.modules, "browser_cookie3", fake_module)
+    monkeypatch.setattr(auth, "_get_browser_order", lambda: ["dia"])
+    monkeypatch.setattr(auth, "_iter_chrome_cookie_files", lambda _name: [cookie_file])
+    monkeypatch.setattr(auth, "_chromium_key_file_for_cookie", lambda _name, _path: local_state)
+
+    cookies, diagnostics = auth._extract_in_process()
+
+    assert diagnostics == []
+    assert cookies is not None
+    assert cookies["auth_token"] == "dia-token"
+    assert seen["browser"] == "Dia"
+    assert seen["cookie_file"] == cookie_file
+    assert seen["key_file"] == local_state
+    assert seen["osx_key_service"] == "Dia Safe Storage"
+    assert seen["osx_key_user"] == "Dia"
+
+
 def test_diagnose_keychain_issues_detects_decryption_error(monkeypatch) -> None:
     """_diagnose_keychain_issues should detect Keychain-related error strings."""
     monkeypatch.setattr("sys.platform", "darwin")
@@ -463,13 +560,14 @@ def test_get_cookies_includes_keychain_hint_in_error(monkeypatch) -> None:
     monkeypatch.setattr("sys.platform", "darwin")
     monkeypatch.setenv("SSH_CLIENT", "1.2.3.4 54321 22")
     monkeypatch.setattr(auth, "load_from_env", lambda: None)
+    monkeypatch.setattr(auth, "_load_cookie_cache", lambda: None)
     monkeypatch.setattr(
         auth,
         "extract_from_browser",
         lambda: (None, ["arc: Unable to get key for cookie decryption"]),
     )
 
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(AuthenticationError) as exc_info:
         auth.get_cookies()
 
     msg = str(exc_info.value)

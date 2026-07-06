@@ -42,6 +42,7 @@ class TweetMedia:
     width: Optional[int] = None
     height: Optional[int] = None
     variants: List[MediaVariant] = field(default_factory=list)
+    alt_text: str = ""
 
 
 @dataclass

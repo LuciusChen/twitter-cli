@@ -47,9 +47,10 @@ If `AUTH_NEEDED`, proceed to guide the user:
 
 **Method A: Browser cookie extraction (recommended)**
 
-Ensure user is logged into x.com in one of: Arc, Chrome, Edge, Firefox, Brave. twitter-cli auto-extracts cookies.
-All Chrome profiles are scanned automatically. To specify a profile: `TWITTER_CHROME_PROFILE="Profile 2" twitter feed`.
-To prioritize a specific browser: `TWITTER_BROWSER=chrome twitter feed` (supported: arc, chrome, edge, firefox, brave).
+Ensure user is logged into x.com in one of: Arc, Dia, Chrome, Edge, Firefox, Brave, Chromium. twitter-cli auto-extracts cookies.
+All discovered Chromium profiles are scanned automatically. To specify a profile: `TWITTER_CHROME_PROFILE="Profile 2" twitter feed`.
+To prioritize a specific browser: `TWITTER_BROWSER=dia twitter feed` (supported: arc, dia, chrome, edge, firefox, brave, chromium).
+For other Chromium-based browsers, set `TWITTER_CHROMIUM_USER_DATA_DIR` to the browser's `User Data` directory. On macOS custom Chromium browsers may also need `TWITTER_CHROMIUM_KEYCHAIN_SERVICE` and `TWITTER_CHROMIUM_KEYCHAIN_USER`.
 
 ```bash
 twitter whoami
@@ -170,6 +171,7 @@ twitter show 2                         # Open tweet #2 from last feed/search lis
 twitter show 2 --full-text             # Full text in reply table
 twitter show 2 --json                  # Structured output
 twitter list 1539453138322673664       # List timeline
+twitter list 1539453138322673664 --cursor "<next-cursor>"
 twitter list 1539453138322673664 --full-text
 twitter user-posts elonmusk --max 20   # User's tweets
 twitter user-posts elonmusk --full-text

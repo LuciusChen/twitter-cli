@@ -39,6 +39,7 @@ def tweet_to_dict(tweet: Tweet) -> Dict[str, Any]:
                 "previewUrl": media.preview_url,
                 "width": media.width,
                 "height": media.height,
+                "altText": media.alt_text,
                 "variants": [
                     {
                         "url": variant.url,
@@ -124,6 +125,13 @@ def tweet_from_dict(data: Dict[str, Any]) -> Tweet:
                 preview_url=str(item.get("previewUrl") or item.get("preview_url") or ""),
                 width=_optional_int(item.get("width")),
                 height=_optional_int(item.get("height")),
+                alt_text=str(
+                    item.get("altText")
+                    or item.get("alt_text")
+                    or item.get("ext_alt_text")
+                    or item.get("description")
+                    or ""
+                ),
                 variants=[
                     MediaVariant(
                         url=str(variant.get("url") or ""),
