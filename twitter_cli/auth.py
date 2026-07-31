@@ -366,10 +366,10 @@ def _iter_chrome_cookie_files(browser_name: str) -> List[str]:
     env_profile = os.environ.get("TWITTER_CHROME_PROFILE", "").strip()
     if env_profile:
         profile_dir = env_profile if os.path.isabs(env_profile) else os.path.join(root, env_profile)
-        paths = _profile_cookie_paths(profile_dir)
-        if paths:
+        profile_paths = _profile_cookie_paths(profile_dir)
+        if profile_paths:
             logger.debug("Using specified Chromium profile: %s", env_profile)
-            return paths
+            return profile_paths
         logger.warning("TWITTER_CHROME_PROFILE='%s' not found under %s", env_profile, root)
         return []
 

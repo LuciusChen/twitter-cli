@@ -16,7 +16,7 @@ from twitter_cli.client import (
     _best_chrome_target,
     TwitterClient,
 )
-from twitter_cli.exceptions import TwitterAPIError
+from twitter_cli.exceptions import NotFoundError, TwitterAPIError
 from twitter_cli.graphql import (
     FEATURES,
     FALLBACK_QUERY_IDS,
@@ -343,6 +343,44 @@ class TestBuildHeaders:
         mock_load_ct_cache.assert_called_once_with()
         mock_ensure_client_transaction.assert_not_called()
 
+    @patch("twitter_cli.client._update_features_from_html")
+    @patch("twitter_cli.client.ClientTransaction")
+    @patch(
+        "twitter_cli.client.get_ondemand_file_url",
+        return_value="https://abs.twimg.com/responsive-web/client-web/ondemand.s.js",
+    )
+    @patch("twitter_cli.client._gen_ct_headers", return_value={"User-Agent": "test"})
+    @patch("twitter_cli.client._get_cffi_session")
+    def test_client_transaction_bootstraps_from_responsive_home_page(
+        self,
+        mock_session_factory,
+        _mock_headers,
+        _mock_ondemand_url,
+        mock_client_transaction,
+        mock_update_features,
+    ):
+        home_page = MagicMock(content=b"<html></html>", text="<html></html>")
+        ondemand_file = MagicMock(text="ondemand bundle")
+        mock_session_factory.return_value.get.side_effect = [home_page, ondemand_file]
+
+        client = TwitterClient.__new__(TwitterClient)
+        client._ct_init_attempted = False
+        client._client_transaction = None
+        client._load_ct_cache = MagicMock(return_value=False)
+        client._save_ct_cache = MagicMock()
+
+        client._ensure_client_transaction()
+
+        first_request = mock_session_factory.return_value.get.call_args_list[0]
+        assert first_request.args[0] == "https://x.com/home"
+        assert first_request.kwargs == {
+            "headers": {"User-Agent": "test"},
+            "timeout": 10,
+        }
+        mock_client_transaction.assert_called_once()
+        mock_update_features.assert_called_once_with("<html></html>")
+        client._save_ct_cache.assert_called_once_with("<html></html>", "ondemand bundle")
+
     @patch("twitter_cli.client._get_cffi_session")
     @patch("twitter_cli.client._gen_ct_headers", return_value={})
     def test_required_headers_present(self, mock_ct_headers, mock_session):
@@ -433,6 +471,7 @@ class TestTweetDetailFetch:
     def test_fetch_tweet_detail_uses_lighter_optional_fields(self):
         client = TwitterClient.__new__(TwitterClient)
         captured = {}
+        focal_tweet = MagicMock(id="123")
 
         def _fetch_timeline(
             operation_name,
@@ -454,11 +493,11 @@ class TestTweetDetailFetch:
                 field_toggles=field_toggles,
                 return_cursor=return_cursor,
             )
-            return []
+            return [focal_tweet]
 
         client._fetch_timeline = _fetch_timeline
 
-        client.fetch_tweet_detail("123", 20)
+        tweets = client.fetch_tweet_detail("123", 20)
 
         assert captured["operation_name"] == "TweetDetail"
         assert captured["count"] == 20
@@ -468,6 +507,27 @@ class TestTweetDetailFetch:
         assert captured["extra_variables"]["withVoice"] is False
         assert captured["field_toggles"]["withArticleRichContentState"] is True
         assert captured["override_base_variables"] is True
+        assert tweets == [focal_tweet]
+
+    def test_fetch_tweet_detail_raises_when_focal_tweet_is_missing(self):
+        client = TwitterClient.__new__(TwitterClient)
+        client._fetch_timeline = MagicMock(return_value=[MagicMock(id="reply-1")])
+
+        with pytest.raises(
+            NotFoundError,
+            match="Tweet 123 was not returned by the TweetDetail response",
+        ):
+            client.fetch_tweet_detail("123", 20)
+
+    def test_fetch_tweet_detail_places_focal_tweet_before_replies(self):
+        client = TwitterClient.__new__(TwitterClient)
+        reply = MagicMock(id="reply-1")
+        focal_tweet = MagicMock(id="123")
+        client._fetch_timeline = MagicMock(return_value=[reply, focal_tweet])
+
+        tweets = client.fetch_tweet_detail("123", 20)
+
+        assert tweets == [focal_tweet, reply]
 
     def test_continues_when_cursor_advances_without_new_tweets(self):
         client = TwitterClient.__new__(TwitterClient)

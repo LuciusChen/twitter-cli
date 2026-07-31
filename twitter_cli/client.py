@@ -484,7 +484,7 @@ class TwitterClient:
     def fetch_tweet_detail(self, tweet_id, count=20):
         # type: (str, int) -> List[Tweet]
         """Fetch a tweet and its conversation thread (replies)."""
-        return self._fetch_timeline(
+        tweets = self._fetch_timeline(
             "TweetDetail",
             count,
             lambda data: _deep_get(data, "data", "tweetResult", "result", "timeline", "instructions")
@@ -508,6 +508,12 @@ class TwitterClient:
                 "withDisallowedReplyControls": False,
             },
         )
+        focal_tweet = next((tweet for tweet in tweets if tweet.id == tweet_id), None)
+        if focal_tweet is None:
+            raise NotFoundError(
+                "Tweet %s was not returned by the TweetDetail response" % tweet_id
+            )
+        return [focal_tweet] + [tweet for tweet in tweets if tweet.id != tweet_id]
 
     def fetch_article(self, tweet_id):
         # type: (str) -> Tweet
@@ -1354,7 +1360,7 @@ class TwitterClient:
             cffi_session = _get_cffi_session()
             ct_headers = _gen_ct_headers()
             home_page = cffi_session.get(
-                "https://x.com", headers=ct_headers, timeout=10,
+                "https://x.com/home", headers=ct_headers, timeout=10,
             )
             home_page_response = bs4.BeautifulSoup(home_page.content, "html.parser")
             ondemand_url = get_ondemand_file_url(response=home_page_response)
