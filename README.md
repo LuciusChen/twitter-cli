@@ -1,17 +1,15 @@
 # twitter-cli
 
-[![CI](https://github.com/jackwener/twitter-cli/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jackwener/twitter-cli/actions/workflows/ci.yml)
-[![PyPI version](https://badge.fury.io/py/twitter-cli.svg)](https://pypi.org/project/twitter-cli/)
-[![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue.svg)](https://pypi.org/project/twitter-cli/)
+[![CI](https://github.com/LuciusChen/twitter-cli/actions/workflows/ci.yml/badge.svg?branch=stable)](https://github.com/LuciusChen/twitter-cli/actions/workflows/ci.yml?query=branch%3Astable)
+[![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue.svg)](./pyproject.toml)
 
 A terminal-first CLI for Twitter/X: read timelines, notifications, bookmarks, and user profiles without API keys.
 
-## More Tools
+## About This Fork
 
-- [xiaohongshu-cli](https://github.com/jackwener/xiaohongshu-cli) — Xiaohongshu (小红书) CLI for notes and account workflows
-- [bilibili-cli](https://github.com/jackwener/bilibili-cli) — Bilibili CLI for videos, users, search, and feeds
-- [discord-cli](https://github.com/jackwener/discord-cli) — Discord CLI for local-first sync, search, and export
-- [tg-cli](https://github.com/jackwener/tg-cli) — Telegram CLI for local-first sync, search, and export
+This fork's default `stable` branch is the version used by [Chirp](https://github.com/LuciusChen/chirp). It tracks [public-clis/twitter-cli](https://github.com/public-clis/twitter-cli), incorporates selected upstream fixes, and carries the notifications, user search, translation, compact structured output, pagination, media, and authentication behavior needed by Chirp. Fork-maintained user-visible changes are recorded in [CHANGELOG.md](./CHANGELOG.md).
+
+The `twitter-cli` package on PyPI follows upstream and may not contain this branch's additions. Install directly from this repository when you need the `stable` behavior documented here.
 
 [English](#english) | [中文](#中文)
 
@@ -65,26 +63,27 @@ twitter-text's generated URL/TLD grammar.
 ### Installation
 
 ```bash
-# Recommended: uv tool (fast, isolated)
-uv tool install twitter-cli
+# Recommended: install this fork's stable branch with uv
+uv tool install "git+https://github.com/LuciusChen/twitter-cli.git@stable"
 
 # Alternative: pipx
-pipx install twitter-cli
+pipx install "git+https://github.com/LuciusChen/twitter-cli.git@stable"
 ```
 
-Upgrade to the latest version:
+Update an existing installation to the latest `stable` commit:
 
 ```bash
-uv tool upgrade twitter-cli
-# Or: pipx upgrade twitter-cli
+uv tool install --force "git+https://github.com/LuciusChen/twitter-cli.git@stable"
+# Or:
+pipx install --force "git+https://github.com/LuciusChen/twitter-cli.git@stable"
 ```
 
-> **Tip:** Upgrade regularly to avoid unexpected errors from outdated API handling.
+> **Tip:** Use the explicit Git source above so an update cannot replace this fork with the upstream PyPI package.
 
 Install from source:
 
 ```bash
-git clone git@github.com:jackwener/twitter-cli.git
+git clone --branch stable --single-branch https://github.com/LuciusChen/twitter-cli.git
 cd twitter-cli
 uv sync
 ```
@@ -357,26 +356,32 @@ uv run ruff check .
 uv run pytest -q
 ```
 
-Current CI validates the project on Python 3.8, 3.10, and 3.12.
+Current CI validates the project on Python 3.10, 3.11, and 3.12.
 
 ### Project Structure
 
 ```text
 twitter_cli/
 ├── __init__.py
-├── cli.py
-├── client.py
-├── graphql.py       # GraphQL query IDs, URL building, JS bundle scanning
-├── parser.py        # Tweet, User, Media parsing logic
 ├── auth.py
+├── cache.py
+├── cli.py
+├── client.py        # Twitter/X HTTP and GraphQL workflows
+├── commands/
+│   └── __init__.py
 ├── config.py
 ├── constants.py
 ├── exceptions.py
 ├── filter.py
 ├── formatter.py
+├── graphql.py       # GraphQL query IDs, URL building, JS bundle scanning
+├── models.py
 ├── output.py
+├── parser.py        # Tweet, User, and Media parsing
+├── search.py
 ├── serialization.py
-└── models.py
+├── text.py          # Weighted tweet text and long-form routing
+└── timeutil.py
 ```
 
 ### Use as AI Agent Skill
@@ -386,7 +391,7 @@ twitter-cli ships with a [`SKILL.md`](./SKILL.md) so AI agents can execute commo
 #### [Skills CLI](https://github.com/vercel-labs/skills) (Recommended)
 
 ```bash
-npx skills add jackwener/twitter-cli
+npx skills add LuciusChen/twitter-cli
 ```
 
 | Flag | Description |
@@ -399,7 +404,7 @@ npx skills add jackwener/twitter-cli
 
 ```bash
 mkdir -p .agents/skills
-git clone git@github.com:jackwener/twitter-cli.git .agents/skills/twitter-cli
+git clone --branch stable --single-branch https://github.com/LuciusChen/twitter-cli.git .agents/skills/twitter-cli
 ```
 
 #### ~~OpenClaw / ClawHub~~ (Deprecated)
@@ -407,6 +412,12 @@ git clone git@github.com:jackwener/twitter-cli.git .agents/skills/twitter-cli
 > ⚠️ ClawHub install method is deprecated and no longer supported. Use [Skills CLI](#skills-cli-recommended) or Manual Install above.
 
 ## 中文
+
+### 关于此 Fork
+
+本 fork 默认的 `stable` 分支是 [Chirp](https://github.com/LuciusChen/chirp) 实际使用的版本。它跟踪 [public-clis/twitter-cli](https://github.com/public-clis/twitter-cli)，选择性合入上游修复，并维护 Chirp 所需的通知、用户搜索、推文翻译、紧凑结构化输出、分页、媒体和认证能力。由本 fork 维护的用户可见改动记录在 [CHANGELOG.md](./CHANGELOG.md) 中。
+
+PyPI 上的 `twitter-cli` 包跟随上游，未必包含本分支的新增功能。需要这里记录的 `stable` 行为时，请直接从本仓库安装。
 
 ### 功能概览
 
@@ -453,18 +464,30 @@ git clone git@github.com:jackwener/twitter-cli.git .agents/skills/twitter-cli
 ### 安装
 
 ```bash
-# 推荐：uv tool
-uv tool install twitter-cli
+# 推荐：通过 uv 安装本 fork 的 stable 分支
+uv tool install "git+https://github.com/LuciusChen/twitter-cli.git@stable"
+
+# 也可以使用 pipx
+pipx install "git+https://github.com/LuciusChen/twitter-cli.git@stable"
 ```
 
-升级到最新版本：
+更新到 `stable` 的最新提交：
 
 ```bash
-uv tool upgrade twitter-cli
-# 或：pipx upgrade twitter-cli
+uv tool install --force "git+https://github.com/LuciusChen/twitter-cli.git@stable"
+# 或：
+pipx install --force "git+https://github.com/LuciusChen/twitter-cli.git@stable"
 ```
 
-> **提示：** 建议定期升级，避免因版本过旧导致的 API 调用异常。
+> **提示：** 请保留上面的 Git 来源，避免更新时被上游 PyPI 包替换。
+
+从源码安装：
+
+```bash
+git clone --branch stable --single-branch https://github.com/LuciusChen/twitter-cli.git
+cd twitter-cli
+uv sync
+```
 
 ### 使用指南
 
@@ -666,7 +689,7 @@ twitter-cli 提供了 [`SKILL.md`](./SKILL.md)，可让 AI Agent 更稳定地调
 #### [Skills CLI](https://github.com/vercel-labs/skills)（推荐）
 
 ```bash
-npx skills add jackwener/twitter-cli
+npx skills add LuciusChen/twitter-cli
 ```
 
 | 参数 | 说明 |
@@ -679,16 +702,9 @@ npx skills add jackwener/twitter-cli
 
 ```bash
 mkdir -p .agents/skills
-git clone git@github.com:jackwener/twitter-cli.git .agents/skills/twitter-cli
+git clone --branch stable --single-branch https://github.com/LuciusChen/twitter-cli.git .agents/skills/twitter-cli
 ```
 
 #### ~~OpenClaw / ClawHub~~（已过时）
 
 > ⚠️ ClawHub 安装方式已过时，不再支持。请使用上方的 Skills CLI 或手动安装。
-
-### 更多工具
-
-- [bilibili-cli](https://github.com/jackwener/bilibili-cli) — Bilibili 视频、用户、搜索与动态 CLI
-- [discord-cli](https://github.com/jackwener/discord-cli) — Discord 本地优先同步、检索与导出 CLI
-- [tg-cli](https://github.com/jackwener/tg-cli) — Telegram 本地优先同步、检索与导出 CLI
-- [xiaohongshu-cli](https://github.com/jackwener/xiaohongshu-cli) — 小红书笔记与账号工作流 CLI
