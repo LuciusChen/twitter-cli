@@ -52,6 +52,36 @@ def test_cli_users_json_searches_typeahead(monkeypatch) -> None:
     assert payload["data"][0]["screenName"] == "emacs"
 
 
+def test_cli_translate_json_accepts_tweet_url(monkeypatch) -> None:
+    class FakeClient:
+        def translate_tweet(self, tweet_id: str, destination_language: str) -> dict:
+            assert tweet_id == "123"
+            assert destination_language == "zh"
+            return {
+                "id": tweet_id,
+                "translation": "你好",
+                "sourceLanguage": "en",
+                "localizedSourceLanguage": "英语",
+                "destinationLanguage": destination_language,
+                "translationSource": "Google",
+                "translationState": "Success",
+            }
+
+    monkeypatch.setattr("twitter_cli.cli._get_client", lambda config=None, quiet=False: FakeClient())
+    monkeypatch.setattr("twitter_cli.cli.load_config", lambda: {})
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        ["translate", "https://x.com/alice/status/123", "--to", "zh", "--json"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["data"]["translation"] == "你好"
+    assert payload["data"]["destinationLanguage"] == "zh"
+
+
 def test_cli_feed_json_input_path(tmp_path, tweet_factory) -> None:
     json_path = tmp_path / "tweets.json"
     json_path.write_text(tweets_to_json([tweet_factory("1")]), encoding="utf-8")
@@ -355,6 +385,7 @@ def test_print_tweet_table_full_text_shows_untruncated_text(tweet_factory) -> No
         ["bookmarks"],
         ["notifications"],
         ["search", "x"],
+        ["translate", "123", "--to", "zh"],
         ["users", "x"],
         ["user-posts", "alice"],
         ["likes", "alice"],

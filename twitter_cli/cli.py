@@ -10,6 +10,7 @@ Read commands:
     twitter search "query"            # search tweets
     twitter search "query" --from user  # advanced search
     twitter users emacs                # search users
+    twitter translate <id> --to zh     # translate a tweet
     twitter user elonmusk             # user profile
     twitter user-posts elonmusk       # user tweets
     twitter likes elonmusk            # user likes
@@ -1105,6 +1106,39 @@ def _emit_tweet_detail(tweets, compact, as_json, as_yaml, full_text):
         if len(tweets) > 1:
             console.print("\n💬 Replies:")
             print_tweet_table(tweets[1:], console, title="💬 Replies — %d" % (len(tweets) - 1), full_text=full_text)
+    console.print()
+
+
+@cli.command()
+@click.argument("tweet_id")
+@click.option(
+    "--to",
+    "destination_language",
+    required=True,
+    help="Destination language code, for example en or zh-cn.",
+)
+@structured_output_options
+def translate(tweet_id, destination_language, as_json, as_yaml):
+    # type: (str, str, bool, bool) -> None
+    """Translate a tweet. TWEET_ID is the numeric tweet ID or full URL."""
+    tweet_id = _normalize_tweet_id(tweet_id)
+    config = load_config()
+    rich_output = use_rich_output(as_json=as_json, as_yaml=as_yaml)
+    try:
+        client = _get_client(config, quiet=not rich_output)
+        if rich_output:
+            console.print("🌐 Translating tweet %s...\n" % tweet_id)
+        result = client.translate_tweet(tweet_id, destination_language)
+    except (TwitterError, RuntimeError) as exc:
+        _exit_with_error(exc)
+
+    if emit_structured(result, as_json=as_json, as_yaml=as_yaml):
+        return
+    console.print(
+        "[bold]Translation · %s → %s[/bold]"
+        % (result["sourceLanguage"] or "?", result["destinationLanguage"])
+    )
+    console.print(result["translation"], markup=False)
     console.print()
 
 

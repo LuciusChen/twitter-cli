@@ -50,6 +50,21 @@ data:
 Known `type` values are `like`, `follow`, `retweet`, `mention`, `reply`,
 `quote`, and `unknown`.
 
+## Translation Fields
+
+`twitter translate <id> --to <language> --json` returns:
+
+```yaml
+data:
+  id: "1234567890"
+  translation: "Translated tweet text"
+  sourceLanguage: ja
+  localizedSourceLanguage: Japanese
+  destinationLanguage: en
+  translationSource: Google
+  translationState: Success
+```
+
 ## Article Fields
 
 `twitter article <id> --json` returns the standard tweet object plus:

@@ -16,7 +16,7 @@ from twitter_cli.client import (
     _best_chrome_target,
     TwitterClient,
 )
-from twitter_cli.exceptions import NotFoundError, TwitterAPIError
+from twitter_cli.exceptions import InvalidInputError, NotFoundError, TwitterAPIError
 from twitter_cli.graphql import (
     FEATURES,
     FALLBACK_QUERY_IDS,
@@ -182,6 +182,42 @@ class TestFetchNotifications:
         assert "/notifications/all.json?" in requested_url
         assert "count=20" in requested_url
         assert "cursor=cursor-prev" in requested_url
+
+
+class TestTweetTranslation:
+    def test_translate_tweet_uses_strato_translation_endpoint(self):
+        client = TwitterClient("auth", "ct0", {"requestDelay": 0})
+        captured = {}
+
+        def _api_get(url):
+            captured["url"] = url
+            return {
+                "id_str": "123",
+                "translation": "你好",
+                "sourceLanguage": "en",
+                "localizedSourceLanguage": "英语",
+                "destinationLanguage": "zh",
+                "translationSource": "Google",
+                "translationState": "Success",
+            }
+
+        client._api_get = _api_get
+
+        result = client.translate_tweet("123", "ZH")
+
+        assert result["translation"] == "你好"
+        assert result["sourceLanguage"] == "en"
+        assert result["destinationLanguage"] == "zh"
+        assert "tweetId=123" in captured["url"]
+        assert "destinationLanguage=Some(zh)" in captured["url"]
+        assert "translationSource=Some(Google)" in captured["url"]
+        assert "feature=None,timeout=None,onlyCached=None" in captured["url"]
+
+    def test_translate_tweet_rejects_invalid_language(self):
+        client = TwitterClient("auth", "ct0", {"requestDelay": 0})
+
+        with pytest.raises(InvalidInputError):
+            client.translate_tweet("123", "zh?bad")
 
 
 # ── _parse_int ───────────────────────────────────────────────────────────

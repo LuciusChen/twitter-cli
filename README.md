@@ -25,6 +25,7 @@ A terminal-first CLI for Twitter/X: read timelines, notifications, bookmarks, an
 - Bookmarks: list saved tweets from your account
 - Search: find tweets by keyword with Top/Latest/Photos/Videos tabs
 - Tweet detail: view a tweet and its replies; use `show <N>` to open tweet #N from the last list output
+- Translation: translate a tweet into an explicitly selected language
 - Article: fetch a Twitter Article and export it as Markdown
 - List timeline: fetch tweets from a Twitter List
 - User lookup: search users and fetch profiles, tweets, likes, followers, and following
@@ -136,6 +137,10 @@ twitter search "trending" --filter              # Apply ranking filter
 twitter tweet 1234567890
 twitter tweet 1234567890 --full-text
 twitter tweet https://x.com/user/status/1234567890
+
+# Tweet translation
+twitter translate 1234567890 --to zh
+twitter translate https://x.com/user/status/1234567890 --to en --json
 
 # Open tweet by index from last list output
 twitter show 2                         # Open tweet #2 from last feed/search
@@ -411,6 +416,7 @@ git clone git@github.com:jackwener/twitter-cli.git .agents/skills/twitter-cli
 - 收藏读取：查看账号书签推文
 - 搜索：按关键词搜索推文，支持 Top/Latest/Photos/Videos
 - 推文详情：查看推文及其回复；用 `show <N>` 可直接打开上次列表里的第 N 条推文
+- 推文翻译：按需将推文翻译到指定语言
 - 文章读取：获取 Twitter 长文，并导出为 Markdown
 - 列表时间线：获取 Twitter List 的推文
 - 用户查询：查看用户资料、推文、点赞、粉丝和关注
@@ -489,6 +495,10 @@ twitter search "trending" --filter              # 启用排序筛选
 # 推文详情
 twitter tweet 1234567890
 twitter tweet 1234567890 --full-text
+
+# 推文翻译
+twitter translate 1234567890 --to zh
+twitter translate https://x.com/user/status/1234567890 --to en --json
 
 # 通过序号打开上次列表里的推文
 twitter show 2                         # 打开上次 feed/search 的第 2 条

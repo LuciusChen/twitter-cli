@@ -8,6 +8,7 @@ import math
 import mimetypes
 import os
 import random
+import re
 import time
 import urllib.parse
 from typing import TYPE_CHECKING, Any, Callable, cast
@@ -34,8 +35,10 @@ from .constants import (
     sync_chrome_version,
 )
 from .exceptions import (
+    InvalidInputError,
     MediaUploadError,
     NotFoundError,
+    TwitterError,
     TwitterAPIError,
 )
 from .graphql import (
@@ -607,6 +610,45 @@ class TwitterClient:
                 "Tweet %s was not returned by the TweetDetail response" % tweet_id
             )
         return [focal_tweet] + [tweet for tweet in tweets if tweet.id != tweet_id]
+
+    def translate_tweet(self, tweet_id, destination_language):
+        # type: (str, str) -> Dict[str, Any]
+        """Translate TWEET_ID into DESTINATION_LANGUAGE."""
+        language = destination_language.strip().lower()
+        if not re.fullmatch(r"[a-z][a-z-]{1,14}", language):
+            raise InvalidInputError(
+                "--to must be an ISO language code like en or zh-cn"
+            )
+
+        key = (
+            "tweetId=%s,destinationLanguage=Some(%s),"
+            "translationSource=Some(Google),feature=None,"
+            "timeout=None,onlyCached=None"
+        ) % (tweet_id, language)
+        data = self._api_get(
+            "https://api.x.com/1.1/strato/column/None/%s/"
+            "translation/service/translateTweet" % key
+        )
+        translation = str(data.get("translation") or "")
+        state = str(data.get("translationState") or "")
+        if not translation:
+            raise TwitterError(
+                "X did not return a translation%s"
+                % ((" (state: %s)" % state) if state else "")
+            )
+        return {
+            "id": str(data.get("id_str") or data.get("id") or tweet_id),
+            "translation": translation,
+            "sourceLanguage": str(data.get("sourceLanguage") or ""),
+            "localizedSourceLanguage": str(
+                data.get("localizedSourceLanguage") or ""
+            ),
+            "destinationLanguage": str(
+                data.get("destinationLanguage") or language
+            ),
+            "translationSource": str(data.get("translationSource") or ""),
+            "translationState": state,
+        }
 
     def fetch_article(self, tweet_id):
         # type: (str) -> Tweet

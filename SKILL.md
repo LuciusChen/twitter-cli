@@ -151,6 +151,7 @@ twitter whoami --json                  # JSON output
 twitter user elonmusk                  # User profile
 twitter user elonmusk --json           # JSON output
 twitter users "elon" --max 10 --json  # User typeahead search
+twitter translate 123 --to zh --json   # Translate a tweet
 twitter feed                           # Home timeline (For You)
 twitter feed -t following              # Following timeline
 twitter feed --max 50                  # Limit count
