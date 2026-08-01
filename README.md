@@ -1,6 +1,5 @@
 # twitter-cli
 
-[![CI](https://github.com/LuciusChen/twitter-cli/actions/workflows/ci.yml/badge.svg?branch=stable)](https://github.com/LuciusChen/twitter-cli/actions/workflows/ci.yml?query=branch%3Astable)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue.svg)](./pyproject.toml)
 
 A terminal-first CLI for Twitter/X: read timelines, notifications, bookmarks, and user profiles without API keys.
