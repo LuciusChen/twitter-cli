@@ -150,6 +150,7 @@ twitter whoami --yaml                  # YAML output
 twitter whoami --json                  # JSON output
 twitter user elonmusk                  # User profile
 twitter user elonmusk --json           # JSON output
+twitter users "elon" --max 10 --json  # User typeahead search
 twitter feed                           # Home timeline (For You)
 twitter feed -t following              # Following timeline
 twitter feed --max 50                  # Limit count
@@ -160,6 +161,8 @@ twitter feed --input tweets.json       # Read from local JSON file
 twitter bookmarks                      # Bookmarked tweets
 twitter bookmarks --full-text          # Full text in bookmarks table
 twitter bookmarks --max 30 --yaml
+twitter notifications --max 20 --json  # Likes, follows, reposts, mentions, replies, quotes
+twitter notifications --mentions --json # Mentions, replies, and quotes only
 twitter search "keyword"               # Search tweets
 twitter search "AI agent" -t Latest --max 50
 twitter search "AI agent" --full-text  # Full text in search results
@@ -337,7 +340,6 @@ twitter bookmarks --filter
 
 - **Images only** — video/GIF animation upload not yet supported (image upload supports JPEG/PNG/GIF/WebP)
 - **No DMs** — no direct messaging
-- **No notifications** — can't read notifications
 - **No polls** — can't create polls
 - **Single account** — one set of credentials at a time
 - **Likes are private** — Twitter/X made all likes private since June 2024. `twitter likes` only works for your own account

@@ -33,7 +33,22 @@ error:
 - `status` returns `data.authenticated` plus `data.user`
 - `whoami` returns `data.user`
 - `user-posts --cursor ...` returns tweets under `data` and may include `pagination.nextCursor`
+- `notifications` returns account activity under `data` and may include `pagination.nextCursor`
 - write commands also support explicit `--json` / `--yaml`
+
+## Notification Fields
+
+```yaml
+data:
+  - id: "notification-id"
+    type: like
+    message: Alice liked your post
+    timestampMs: 1700000000000
+    tweetId: "1234567890"
+```
+
+Known `type` values are `like`, `follow`, `retweet`, `mention`, `reply`,
+`quote`, and `unknown`.
 
 ## Article Fields
 

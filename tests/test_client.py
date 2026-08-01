@@ -106,6 +106,84 @@ class TestFetchUser:
         assert user.viewer_muting is True
 
 
+class TestFetchNotifications:
+    def test_parses_activity_tweets_and_cursor(self):
+        client = TwitterClient.__new__(TwitterClient)
+        client._max_count = 200
+        client._api_get = MagicMock(return_value={
+            "globalObjects": {
+                "notifications": {
+                    "n1": {
+                        "id": "n1",
+                        "timestampMs": "1700000000000",
+                        "icon": {"id": "heart_icon"},
+                        "message": {"text": "Alice liked your post"},
+                    },
+                },
+                "tweets": {
+                    "100": {
+                        "id_str": "100",
+                        "full_text": "Original post",
+                        "user_id_str": "me",
+                    },
+                    "200": {
+                        "id_str": "200",
+                        "full_text": "@me A reply",
+                        "user_id_str": "u2",
+                        "in_reply_to_status_id_str": "100",
+                    },
+                },
+                "users": {
+                    "u1": {"id_str": "u1", "name": "Alice", "screen_name": "alice"},
+                    "u2": {"id_str": "u2", "name": "Bob", "screen_name": "bob"},
+                    "me": {"id_str": "me", "name": "Me", "screen_name": "me"},
+                },
+            },
+            "timeline": {
+                "instructions": [{
+                    "addEntries": {
+                        "entries": [
+                            {
+                                "entryId": "notification-n1",
+                                "content": {"item": {"content": {"notification": {
+                                    "id": "n1",
+                                    "fromUsers": ["u1"],
+                                    "targetTweets": ["100"],
+                                }}}},
+                            },
+                            {
+                                "entryId": "notification-200",
+                                "content": {"item": {"content": {"tweet": {"id": "200"}}}},
+                            },
+                            {
+                                "entryId": "cursor-bottom",
+                                "content": {"operation": {"cursor": {
+                                    "cursorType": "Bottom",
+                                    "value": "cursor-next",
+                                }}},
+                            },
+                        ],
+                    },
+                }],
+            },
+        })
+
+        notifications, cursor = client.fetch_notifications(
+            20,
+            cursor="cursor-prev",
+            return_cursor=True,
+        )
+
+        assert cursor == "cursor-next"
+        assert [item.kind for item in notifications] == ["like", "reply"]
+        assert notifications[0].tweet_id == "100"
+        assert notifications[1].message == "@bob: @me A reply"
+        requested_url = client._api_get.call_args.args[0]
+        assert "/notifications/all.json?" in requested_url
+        assert "count=20" in requested_url
+        assert "cursor=cursor-prev" in requested_url
+
+
 # ── _parse_int ───────────────────────────────────────────────────────────
 
 class TestParseInt:
@@ -778,6 +856,29 @@ class TestTweetDetailFetch:
         assert users == []
         assert "friends/list.json" in captured["url"]
         assert "user_id=1" in captured["url"]
+
+    def test_search_users_uses_typeahead_and_limits_results(self):
+        client = TwitterClient("auth", "ct0", {"requestDelay": 0})
+        captured = {}
+
+        def _api_get(url):
+            captured["url"] = url
+            return {
+                "users": [
+                    {"id_str": "1", "screen_name": "emacs", "name": "Emacs"},
+                    {"id_str": "2", "screen_name": "emacslife", "name": "Emacs Life"},
+                ]
+            }
+
+        client._api_get = _api_get
+
+        users = client.search_users("@Emacs Lisp", 1)
+
+        assert [user.screen_name for user in users] == ["emacs"]
+        assert "/i/api/1.1/search/typeahead.json?" in captured["url"]
+        assert "q=Emacs+Lisp" in captured["url"]
+        assert "result_type=users" in captured["url"]
+        assert "count=1" in captured["url"]
 
     def test_fetch_user_tweets_accepts_new_and_legacy_instruction_paths(self):
         client = TwitterClient("auth", "ct0", {"requestDelay": 0})

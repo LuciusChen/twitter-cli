@@ -51,6 +51,7 @@ from .models import BookmarkFolder, ListInfo, UserProfile
 from .parser import (
     _deep_get,
     _parse_int,
+    parse_notifications_response,
     parse_timeline_response,
     parse_tweet_result,
 )
@@ -238,6 +239,24 @@ class TwitterClient:
             return_cursor=return_cursor,
         )
 
+    def fetch_notifications(self, count=20, cursor=None, mentions=False, return_cursor=False):
+        # type: (int, Optional[str], bool, bool) -> Any
+        """Fetch account activity notifications or the mentions-only view."""
+        count = min(max(count, 1), self._max_count)
+        params = {"count": count}  # type: Dict[str, Any]
+        if cursor:
+            params["cursor"] = cursor
+        view = "mentions" if mentions else "all"
+        url = "https://x.com/i/api/2/notifications/%s.json?%s" % (
+            view,
+            urllib.parse.urlencode(params),
+        )
+        notifications, next_cursor = parse_notifications_response(self._api_get(url))
+        notifications = notifications[:count]
+        if return_cursor:
+            return notifications, next_cursor
+        return notifications
+
     def fetch_bookmarks(self, count=50):
         # type: (int) -> List[Tweet]
         """Fetch bookmarked tweets."""
@@ -364,6 +383,34 @@ class TwitterClient:
             viewer_blocking=bool(relationship.get("blocking")),
             viewer_muting=bool(relationship.get("muting")),
         )
+
+    def search_users(self, query, count=10):
+        # type: (str, int) -> List[UserProfile]
+        """Return user typeahead matches for QUERY."""
+        query = query.lstrip("@").strip()
+        if not query or count <= 0:
+            return []
+
+        count = min(count, self._max_count)
+        params = urllib.parse.urlencode(
+            {
+                "q": query,
+                "src": "search_box",
+                "result_type": "users",
+                "count": count,
+            }
+        )
+        data = self._api_get(
+            "https://x.com/i/api/1.1/search/typeahead.json?%s" % params
+        )
+        users = []  # type: List[UserProfile]
+        seen_ids = set()  # type: Set[str]
+        for item in data.get("users") or []:
+            user = self._parse_rest_user_profile(item)
+            if user and user.screen_name and user.id not in seen_ids:
+                seen_ids.add(user.id)
+                users.append(user)
+        return users[:count]
 
     def fetch_user_tweets(self, user_id, count=20, cursor=None, return_cursor=False):
         # type: (str, int, Optional[str], bool) -> Any

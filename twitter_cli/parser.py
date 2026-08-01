@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Any, Callable, Dict, List, Optional, Tuple  # noqa: F401
 
-from .models import Author, MediaVariant, Metrics, Tweet, TweetMedia, UserProfile
+from .models import Author, MediaVariant, Metrics, Notification, Tweet, TweetMedia, UserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -416,6 +416,122 @@ def parse_user_result(user_data):
         viewer_blocking=bool(relationship.get("blocking")),
         viewer_muting=bool(relationship.get("muting")),
     )
+
+
+# ── Notification parsing ─────────────────────────────────────────────────
+
+
+_NOTIFICATION_ICON_KINDS = {
+    "heart_icon": "like",
+    "person_icon": "follow",
+    "retweet_icon": "retweet",
+    "mention_icon": "mention",
+    "reply_icon": "reply",
+    "quote_icon": "quote",
+}
+
+
+def _notification_message(raw):
+    # type: (Dict[str, Any]) -> str
+    """Return display text from a REST notification object."""
+    message = raw.get("message")
+    if isinstance(message, dict):
+        return str(message.get("text") or "")
+    return str(message or "")
+
+
+def _notification_entries(data):
+    # type: (Dict[str, Any]) -> List[Dict[str, Any]]
+    """Return timeline entries from a REST notification response."""
+    entries = []  # type: List[Dict[str, Any]]
+    for instruction in _deep_get(data, "timeline", "instructions") or []:
+        entries.extend(_deep_get(instruction, "addEntries", "entries") or [])
+        entries.extend(instruction.get("entries") or [])
+    return entries
+
+
+def _notification_cursor(entries):
+    # type: (List[Dict[str, Any]]) -> Optional[str]
+    """Return the bottom cursor from notification timeline ENTRIES."""
+    next_cursor = None
+    for entry in entries:
+        cursor = _deep_get(entry, "content", "operation", "cursor") or {}
+        if cursor.get("cursorType") == "Bottom" and cursor.get("value"):
+            next_cursor = str(cursor["value"])
+    return next_cursor
+
+
+def _snowflake_timestamp_ms(value):
+    # type: (Any) -> Optional[int]
+    """Return the timestamp encoded in a Twitter snowflake id."""
+    try:
+        return (int(value) >> 22) + 1288834974657
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_notifications_response(data):
+    # type: (Dict[str, Any]) -> Tuple[List[Notification], Optional[str]]
+    """Parse X's REST notification timeline into normalized notifications."""
+    globals_data = data.get("globalObjects") or {}
+    raw_notifications = globals_data.get("notifications") or {}
+    tweets = globals_data.get("tweets") or {}
+    users = globals_data.get("users") or {}
+    entries = _notification_entries(data)
+    notifications = []
+    seen_ids = set()
+
+    for entry in entries:
+        entry_id = str(entry.get("entryId") or "")
+        item = _deep_get(entry, "content", "item", "content") or {}
+        reference = item.get("notification")
+        tweet_reference = item.get("tweet")
+
+        if isinstance(reference, dict):
+            notification_id = str(
+                reference.get("id")
+                or entry_id.removeprefix("notification-")
+            )
+            raw = raw_notifications.get(notification_id) or {}
+            target_ids = [str(value) for value in (reference.get("targetTweets") or [])]
+            tweet_id = target_ids[0] if target_ids else None
+            icon_id = str(_deep_get(raw, "icon", "id") or "")
+            timestamp_ms = _parse_int(raw.get("timestampMs"), 0) or None
+            notification = Notification(
+                id=notification_id,
+                kind=_NOTIFICATION_ICON_KINDS.get(icon_id, "unknown"),
+                message=_notification_message(raw),
+                timestamp_ms=timestamp_ms,
+                tweet_id=tweet_id,
+            )
+        elif isinstance(tweet_reference, dict):
+            tweet_id = str(tweet_reference.get("id") or "")
+            raw_tweet = tweets.get(tweet_id) or {}
+            tweet_text = str(raw_tweet.get("full_text") or raw_tweet.get("text") or "")
+            user_id = str(raw_tweet.get("user_id_str") or raw_tweet.get("user_id") or "")
+            screen_name = str((users.get(user_id) or {}).get("screen_name") or "")
+            message = "@%s: %s" % (screen_name, tweet_text) if screen_name else tweet_text
+            if raw_tweet.get("in_reply_to_status_id_str") or raw_tweet.get("in_reply_to_status_id"):
+                kind = "reply"
+            elif raw_tweet.get("is_quote_status") or raw_tweet.get("quoted_status_id_str"):
+                kind = "quote"
+            else:
+                kind = "mention"
+            notification = Notification(
+                id=entry_id or tweet_id,
+                kind=kind,
+                message=message,
+                timestamp_ms=_snowflake_timestamp_ms(tweet_id),
+                tweet_id=tweet_id,
+            )
+        else:
+            continue
+
+        if notification.id and notification.id not in seen_ids:
+            seen_ids.add(notification.id)
+            notifications.append(notification)
+
+    return notifications, _notification_cursor(entries)
 
 
 # ── Tweet parsing ────────────────────────────────────────────────────────

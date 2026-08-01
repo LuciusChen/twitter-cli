@@ -10,7 +10,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 
-from .models import Tweet, UserProfile
+from .models import Notification, Tweet, UserProfile
 from .timeutil import format_local_time, format_relative_time
 
 
@@ -107,6 +107,24 @@ def print_tweet_table(
         score_str = "%.1f" % tweet.score if tweet.score is not None else "-"
 
         table.add_row(str(i + 1), author_text, text, stats, score_str)
+
+    console.print(table)
+
+
+def print_notification_table(
+    notifications: List[Notification],
+    console: Optional[Console] = None,
+) -> None:
+    """Print account activity notifications as a compact rich table."""
+    if console is None:
+        console = _make_console()
+
+    table = Table(title="🔔 Notifications — %d" % len(notifications), show_lines=True, expand=True)
+    table.add_column("Type", style="yellow", width=10, no_wrap=True)
+    table.add_column("Activity", ratio=3)
+
+    for notification in notifications:
+        table.add_row(notification.kind, notification.message or "Notification")
 
     console.print(table)
 

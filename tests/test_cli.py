@@ -10,7 +10,15 @@ import yaml
 
 from twitter_cli.cli import cli
 from twitter_cli.formatter import article_to_markdown, print_tweet_table
-from twitter_cli.models import Author, BookmarkFolder, ListInfo, Metrics, Tweet, UserProfile
+from twitter_cli.models import (
+    Author,
+    BookmarkFolder,
+    ListInfo,
+    Metrics,
+    Notification,
+    Tweet,
+    UserProfile,
+)
 from twitter_cli.serialization import tweets_to_json
 
 
@@ -25,6 +33,23 @@ def test_cli_user_command_works_with_client_factory(monkeypatch) -> None:
     assert result.exit_code == 0
 
 
+def test_cli_users_json_searches_typeahead(monkeypatch) -> None:
+    class FakeClient:
+        def search_users(self, query: str, count: int) -> list[UserProfile]:
+            assert query == "em"
+            assert count == 5
+            return [UserProfile(id="1", name="Emacs", screen_name="emacs")]
+
+    monkeypatch.setattr("twitter_cli.cli._get_client", lambda config=None, quiet=False: FakeClient())
+    monkeypatch.setattr("twitter_cli.cli.load_config", lambda: {})
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["users", "em", "--max", "5", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["ok"] is True
+    assert payload["data"][0]["screenName"] == "emacs"
 
 
 def test_cli_feed_json_input_path(tmp_path, tweet_factory) -> None:
@@ -85,6 +110,47 @@ def test_cli_feed_passes_include_promoted(monkeypatch, tweet_factory) -> None:
     payload = json.loads(result.output)
     assert payload["ok"] is True
     assert payload["data"][0]["isPromoted"] is True
+    assert payload["pagination"]["nextCursor"] == "cursor-next"
+
+
+def test_cli_notifications_json_includes_cursor(monkeypatch) -> None:
+    class FakeClient:
+        def fetch_notifications(
+            self,
+            count: int,
+            cursor: str | None = None,
+            mentions: bool = False,
+            return_cursor: bool = False,
+        ):
+            assert count == 5
+            assert cursor == "cursor-prev"
+            assert mentions is True
+            assert return_cursor is True
+            return [
+                Notification(
+                    id="n1",
+                    kind="retweet",
+                    message="Alice reposted your post",
+                    tweet_id="100",
+                )
+            ], "cursor-next"
+
+    monkeypatch.setattr("twitter_cli.cli._get_client", lambda config=None, quiet=False: FakeClient())
+    monkeypatch.setattr(
+        "twitter_cli.cli.load_config",
+        lambda: {"fetch": {"count": 20}, "filter": {}, "rateLimit": {}},
+    )
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        ["notifications", "--max", "5", "--cursor", "cursor-prev", "--mentions", "--json"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["data"][0]["type"] == "retweet"
+    assert payload["data"][0]["tweetId"] == "100"
     assert payload["pagination"]["nextCursor"] == "cursor-next"
 
 
@@ -287,7 +353,9 @@ def test_print_tweet_table_full_text_shows_untruncated_text(tweet_factory) -> No
     [
         ["favorites"],
         ["bookmarks"],
+        ["notifications"],
         ["search", "x"],
+        ["users", "x"],
         ["user-posts", "alice"],
         ["likes", "alice"],
         ["list", "123"],

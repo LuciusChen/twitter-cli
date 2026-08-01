@@ -69,6 +69,15 @@ class Tweet:
 
 
 @dataclass
+class Notification:
+    id: str
+    kind: str
+    message: str
+    timestamp_ms: Optional[int] = None
+    tweet_id: Optional[str] = None
+
+
+@dataclass
 class BookmarkFolder:
     id: str
     name: str

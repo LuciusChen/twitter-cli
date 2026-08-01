@@ -4,10 +4,12 @@ Read commands:
     twitter feed                      # home timeline (For You)
     twitter feed -t following         # following feed
     twitter bookmarks                 # bookmarks
+    twitter notifications             # account activity
     twitter bookmarks folders         # list bookmark folders
     twitter bookmarks folders <id>    # tweets in a folder
     twitter search "query"            # search tweets
     twitter search "query" --from user  # advanced search
+    twitter users emacs                # search users
     twitter user elonmusk             # user profile
     twitter user-posts elonmusk       # user tweets
     twitter likes elonmusk            # user likes
@@ -57,6 +59,7 @@ from .formatter import (
     article_to_markdown,
     print_filter_stats,
     print_article,
+    print_notification_table,
     print_tweet_detail,
     print_tweet_table,
     print_user_profile,
@@ -75,6 +78,7 @@ from .output import (
 )
 from .serialization import (
     list_infos_to_data,
+    notifications_to_data,
     tweet_to_dict,
     tweets_from_json,
     tweets_to_data,
@@ -493,6 +497,39 @@ def feed(ctx, feed_type, max_count, cursor, as_json, as_yaml, input_file, output
 
 
 @cli.command()
+@click.option("--max", "-n", "max_count", type=int, default=None, help="Max notifications to fetch.")
+@click.option("--cursor", type=str, default=None, help="Pagination cursor from a previous request.")
+@click.option("--mentions", is_flag=True, help="Read only mentions, replies, and quotes.")
+@structured_output_options
+def notifications(max_count, cursor, mentions, as_json, as_yaml):
+    # type: (Optional[int], Optional[str], bool, bool, bool) -> None
+    """Fetch account activity notifications."""
+    config = load_config()
+    rich_output = use_rich_output(as_json=as_json, as_yaml=as_yaml)
+    try:
+        fetch_count = _resolve_configured_count(config, max_count)
+        client = _get_client(config, quiet=not rich_output)
+        if rich_output:
+            console.print("🔔 Fetching notifications...\n")
+        items, next_cursor = client.fetch_notifications(
+            fetch_count,
+            cursor=cursor,
+            mentions=mentions,
+            return_cursor=True,
+        )
+    except (TwitterError, RuntimeError) as exc:
+        _exit_with_error(exc)
+
+    payload = success_payload(notifications_to_data(items))
+    if next_cursor:
+        payload["pagination"] = {"nextCursor": next_cursor}
+    if emit_structured(payload, as_json=as_json, as_yaml=as_yaml):
+        return
+    print_notification_table(items, console)
+    console.print()
+
+
+@cli.command()
 @click.option("--max", "-n", "max_count", type=int, default=None, help="Max number of tweets to fetch.")
 @structured_output_options
 @click.option("--output", "-o", "output_file", type=str, default=None, help="Save tweets to JSON file.")
@@ -692,6 +729,29 @@ def user(screen_name, as_json, as_yaml):
     if not emit_structured(user_profile_to_dict(profile), as_json=as_json, as_yaml=as_yaml):
         console.print()
         print_user_profile(profile, console)
+
+
+@cli.command()
+@click.argument("query")
+@click.option("--max", "-n", "max_count", type=int, default=10, show_default=True,
+              help="Max users to return.")
+@structured_output_options
+def users(query, max_count, as_json, as_yaml):
+    # type: (str, int, bool, bool) -> None
+    """Search users by handle or name."""
+    config = load_config()
+    try:
+        rich_output = use_rich_output(as_json=as_json, as_yaml=as_yaml)
+        client = _get_client(config, quiet=not rich_output)
+        if rich_output:
+            console.print("🔎 Searching users for %s..." % query)
+        matches = client.search_users(query, max_count)
+    except (TwitterError, RuntimeError) as exc:
+        _exit_with_error(exc)
+
+    if not emit_structured(users_to_data(matches), as_json=as_json, as_yaml=as_yaml):
+        print_user_table(matches, console, title="👥 Users matching %s" % query)
+        console.print()
 
 
 @cli.command("user-posts")

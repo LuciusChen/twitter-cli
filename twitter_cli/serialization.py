@@ -5,7 +5,17 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Iterable, List, Optional
 
-from .models import Author, BookmarkFolder, ListInfo, MediaVariant, Metrics, Tweet, TweetMedia, UserProfile
+from .models import (
+    Author,
+    BookmarkFolder,
+    ListInfo,
+    MediaVariant,
+    Metrics,
+    Notification,
+    Tweet,
+    TweetMedia,
+    UserProfile,
+)
 from .timeutil import format_iso8601, format_local_time
 
 
@@ -178,6 +188,22 @@ def tweets_to_json(tweets: Iterable[Tweet]) -> str:
 def tweets_to_data(tweets: Iterable[Tweet]) -> List[Dict[str, Any]]:
     """Serialize Tweet objects to Python dicts."""
     return [tweet_to_dict(tweet) for tweet in tweets]
+
+
+def notification_to_dict(notification: Notification) -> Dict[str, Any]:
+    """Convert a Notification dataclass into a JSON-safe dict."""
+    return {
+        "id": notification.id,
+        "type": notification.kind,
+        "message": notification.message,
+        "timestampMs": notification.timestamp_ms,
+        "tweetId": notification.tweet_id,
+    }
+
+
+def notifications_to_data(notifications: Iterable[Notification]) -> List[Dict[str, Any]]:
+    """Serialize Notification objects to Python dicts."""
+    return [notification_to_dict(notification) for notification in notifications]
 
 
 def tweet_to_compact_dict(tweet: Tweet) -> Dict[str, Any]:

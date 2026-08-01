@@ -4,7 +4,7 @@
 [![PyPI version](https://badge.fury.io/py/twitter-cli.svg)](https://pypi.org/project/twitter-cli/)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue.svg)](https://pypi.org/project/twitter-cli/)
 
-A terminal-first CLI for Twitter/X: read timelines, bookmarks, and user profiles without API keys.
+A terminal-first CLI for Twitter/X: read timelines, notifications, bookmarks, and user profiles without API keys.
 
 ## More Tools
 
@@ -21,12 +21,13 @@ A terminal-first CLI for Twitter/X: read timelines, bookmarks, and user profiles
 
 **Read:**
 - Timeline: fetch `for-you` and `following` feeds
+- Notifications: read likes, follows, reposts, mentions, replies, and quotes
 - Bookmarks: list saved tweets from your account
 - Search: find tweets by keyword with Top/Latest/Photos/Videos tabs
 - Tweet detail: view a tweet and its replies; use `show <N>` to open tweet #N from the last list output
 - Article: fetch a Twitter Article and export it as Markdown
 - List timeline: fetch tweets from a Twitter List
-- User lookup: fetch user profile, tweets, likes, followers, and following
+- User lookup: search users and fetch profiles, tweets, likes, followers, and following
 - `--full-text`: disable tweet text truncation in rich table output
 - Structured output: export any data as YAML or JSON for scripting and AI agent integration
 - Optional scoring filter: rank tweets by engagement weights
@@ -116,6 +117,11 @@ twitter bookmarks
 twitter bookmarks --full-text
 twitter bookmarks --max 30 --yaml
 
+# Notifications
+twitter notifications --max 20 --json
+twitter notifications --mentions --json
+twitter notifications --cursor "<next-cursor-from-previous-response>"
+
 # Search
 twitter search "Claude Code"
 twitter search "AI agent" -t Latest --max 50
@@ -150,6 +156,7 @@ twitter lists --json                     # your owned and followed lists
 
 # User
 twitter user elonmusk
+twitter users "elon" --max 10
 twitter user-posts elonmusk --max 20
 twitter user-posts elonmusk --cursor cursor-prev --json
 twitter user-posts elonmusk --full-text
@@ -400,6 +407,7 @@ git clone git@github.com:jackwener/twitter-cli.git .agents/skills/twitter-cli
 
 **读取:**
 - 时间线读取：支持 `for-you` 和 `following`
+- 通知：读取点赞、关注、转推、@、回复和引用
 - 收藏读取：查看账号书签推文
 - 搜索：按关键词搜索推文，支持 Top/Latest/Photos/Videos
 - 推文详情：查看推文及其回复；用 `show <N>` 可直接打开上次列表里的第 N 条推文
@@ -466,6 +474,11 @@ twitter feed --cursor "<上一页返回的 nextCursor>"
 twitter bookmarks
 twitter bookmarks --full-text
 
+# 通知
+twitter notifications --max 20 --json
+twitter notifications --mentions --json
+twitter notifications --cursor "<上一页返回的 nextCursor>"
+
 # 搜索
 twitter search "Claude Code"
 twitter search "AI agent" -t Latest --max 50
@@ -496,6 +509,7 @@ twitter lists --json                     # 当前账号自己的和已关注的 
 
 # 用户
 twitter user elonmusk
+twitter users "elon" --max 10
 twitter user-posts elonmusk --max 20
 twitter user-posts elonmusk --cursor cursor-prev --json
 twitter user-posts elonmusk --full-text
