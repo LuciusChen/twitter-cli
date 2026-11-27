@@ -76,8 +76,15 @@ TimelineInstructionGetter = Callable[[Any], Any]
 
 # Hard ceiling to prevent accidental massive fetches
 _ABSOLUTE_MAX_COUNT = 500
+_USER_LIST_MAX_COUNT = 10_000
 _LIST_COLLECTION_PAGE_SIZE = 100
 _LIST_SOURCE_PRIORITY = {"owned": 0, "subscribed": 1, "member": 2}
+
+
+def configured_count_limit(rate_limit_config):
+    # type: (dict) -> int
+    """Return the configured ceiling for ordinary fetches."""
+    return min(int(rate_limit_config.get("maxCount", 200)), _ABSOLUTE_MAX_COUNT)
 
 
 # ── Session management ───────────────────────────────────────────────────
@@ -210,7 +217,7 @@ class TwitterClient:
         self._request_delay = float(rl.get("requestDelay", 2.5))
         self._max_retries = int(rl.get("maxRetries", 3))
         self._retry_base_delay = float(rl.get("retryBaseDelay", 5.0))
-        self._max_count = min(int(rl.get("maxCount", 200)), _ABSOLUTE_MAX_COUNT)
+        self._max_count = configured_count_limit(rl)
         self._client_transaction = None  # type: Optional[Any]
         self._ct_init_attempted = False
         # Keep startup fast: only reuse a locally cached transaction helper here.
@@ -756,13 +763,13 @@ class TwitterClient:
             ),
         )
 
-    def fetch_followers(self, user_id, count=20):
-        # type: (str, int) -> List[UserProfile]
+    def fetch_followers(self, user_id, count=None):
+        # type: (str, Optional[int]) -> List[UserProfile]
         """Fetch followers of a user."""
         return self._fetch_rest_user_collection("followers", user_id, count)
 
-    def fetch_following(self, user_id, count=20):
-        # type: (str, int) -> List[UserProfile]
+    def fetch_following(self, user_id, count=None):
+        # type: (str, Optional[int]) -> List[UserProfile]
         """Fetch users that a user is following."""
         return self._fetch_rest_user_collection("friends", user_id, count)
 
@@ -1227,11 +1234,15 @@ class TwitterClient:
         )
 
     def _fetch_rest_user_collection(self, endpoint, user_id, count):
-        # type: (str, str, int) -> List[UserProfile]
+        # type: (str, str, Optional[int]) -> List[UserProfile]
         """Fetch a paginated REST followers/friends collection for USER_ID."""
+        if count is None:
+            count = min(20, self._max_count)
+        if count > _USER_LIST_MAX_COUNT:
+            logger.warning("Requested %d users; limiting to %d", count, _USER_LIST_MAX_COUNT)
+            count = _USER_LIST_MAX_COUNT
         if count <= 0:
             return []
-        count = min(count, self._max_count)
         users = []  # type: List[UserProfile]
         seen_ids = set()  # type: Set[str]
         cursor = "-1"
