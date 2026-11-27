@@ -15,6 +15,8 @@ This file records user-visible changes maintained on the `stable` branch from
 - Bookmark timelines, including individual folders, accept `--cursor` and
   expose the continuation in structured output.
 - Structured tweets and media include X's sensitive-content labels.
+- Thread detail supports `--cursor`, and structured tweets include the replied-to
+  user ID (`inReplyToUserId`) when X provides it.
 
 ### Fixed
 

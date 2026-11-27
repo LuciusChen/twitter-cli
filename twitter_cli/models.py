@@ -70,6 +70,7 @@ class Tweet:
     is_subscriber_only: bool = False
     is_promoted: bool = False
     possibly_sensitive: bool = False
+    in_reply_to_user_id: Optional[str] = None
 
 
 @dataclass

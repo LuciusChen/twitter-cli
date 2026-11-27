@@ -139,12 +139,15 @@ def test_tweet_roundtrip_preserves_reply_metadata(tweet_factory) -> None:
         in_reply_to_screen_name="dashhuang",
     )
 
+    tweet.in_reply_to_user_id = "42"
     payload = tweet_to_dict(tweet)
+    assert payload["inReplyToUserId"] == "42"
     assert payload["conversationId"] == "100"
     assert payload["inReplyToStatusId"] == "100"
     assert payload["inReplyToScreenName"] == "dashhuang"
 
     restored = tweet_from_dict(payload)
+    assert restored.in_reply_to_user_id == "42"
     assert restored.conversation_id == "100"
     assert restored.in_reply_to_status_id == "100"
     assert restored.in_reply_to_screen_name == "dashhuang"
