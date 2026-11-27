@@ -1388,12 +1388,16 @@ class TwitterClient:
         try:
             return _do_post(query_id)
         except TwitterAPIError as exc:
-            if _is_stale_query_error(exc) and using_fallback:
-                logger.info("Retrying POST %s with live queryId after stale-query response", operation_name)
-                _invalidate_query_id(operation_name)
-                refreshed = _resolve_query_id(operation_name, prefer_fallback=False, url_fetch_fn=_url_fetch)
-                return _do_post(refreshed)
-            raise
+            if not using_fallback or not _is_stale_query_error(exc):
+                raise
+            _invalidate_query_id(operation_name)
+            refreshed = _resolve_query_id(
+                operation_name, prefer_fallback=False, url_fetch_fn=_url_fetch
+            )
+            if refreshed == query_id:
+                raise
+            logger.info("Retrying POST %s with a new queryId", operation_name)
+            return _do_post(refreshed)
 
     # ── Internal: HTTP request engine ────────────────────────────────
 
