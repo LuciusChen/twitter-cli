@@ -327,7 +327,7 @@ def _fetch_and_display(fetch_fn, label, emoji, max_count, as_json, as_yaml, outp
         if rich_output:
             console.print("%s Fetching %s (%d tweets)...\n" % (emoji, label, fetch_count))
         start = time.time()
-        tweets = fetch_fn(fetch_count)
+        tweets, next_cursor = fetch_fn(fetch_count)
         elapsed = time.time() - start
         if rich_output:
             console.print("✅ Fetched %d %s in %.1fs\n" % (len(tweets), label, elapsed))
@@ -347,7 +347,7 @@ def _fetch_and_display(fetch_fn, label, emoji, max_count, as_json, as_yaml, outp
 
     save_tweet_cache(filtered)
 
-    if emit_structured(tweets_to_data(filtered), as_json=as_json, as_yaml=as_yaml):
+    if _emit_timeline_structured(filtered, next_cursor, as_json=as_json, as_yaml=as_yaml):
         return
 
     print_tweet_table(
@@ -369,14 +369,15 @@ def _emit_timeline_structured(tweets, next_cursor, *, as_json, as_yaml):
     return emit_structured(payload, as_json=as_json, as_yaml=as_yaml)
 
 
-def _run_bookmarks_command(max_count, as_json, as_yaml, output_file, do_filter, compact=False, full_text=False):
-    # type: (Optional[int], bool, bool, Optional[str], bool, bool, bool) -> None
+def _run_bookmarks_command(max_count, as_json, as_yaml, output_file, do_filter, compact=False, full_text=False, cursor=None):
+    # type: (Optional[int], bool, bool, Optional[str], bool, bool, bool, Optional[str]) -> None
     config = load_config()
 
     def _run():
-        client = _get_client(config)
+        rich_output = use_rich_output(as_json=as_json, as_yaml=as_yaml, compact=compact)
+        client = _get_client(config, quiet=not rich_output)
         _fetch_and_display(
-            lambda count: client.fetch_bookmarks(count),
+            lambda count: client.fetch_bookmarks(count, cursor=cursor, return_cursor=True),
             "bookmarks",
             "🔖",
             max_count,
@@ -532,13 +533,14 @@ def notifications(max_count, cursor, mentions, as_json, as_yaml):
 
 @cli.command()
 @click.option("--max", "-n", "max_count", type=int, default=None, help="Max number of tweets to fetch.")
+@click.option("--cursor", help="Continue a previous bookmark timeline request.")
 @structured_output_options
 @click.option("--output", "-o", "output_file", type=str, default=None, help="Save tweets to JSON file.")
 @click.option("--filter", "do_filter", is_flag=True, help="Enable score-based filtering.")
 @click.option("--full-text", is_flag=True, help="Show full tweet text in table output.")
 @click.pass_context
-def favorites(ctx, max_count, as_json, as_yaml, output_file, do_filter, full_text):
-    # type: (Any, Optional[int], bool, bool, Optional[str], bool, bool) -> None
+def favorites(ctx, max_count, cursor, as_json, as_yaml, output_file, do_filter, full_text):
+    # type: (Any, Optional[int], Optional[str], bool, bool, Optional[str], bool, bool) -> None
     """Fetch bookmarked (favorite) tweets."""
     _run_bookmarks_command(
         max_count,
@@ -548,18 +550,20 @@ def favorites(ctx, max_count, as_json, as_yaml, output_file, do_filter, full_tex
         do_filter,
         compact=ctx.obj.get("compact", False),
         full_text=full_text,
+        cursor=cursor,
     )
 
 
 @cli.group(name="bookmarks", invoke_without_command=True)
 @click.option("--max", "-n", "max_count", type=int, default=None, help="Max number of tweets to fetch.")
+@click.option("--cursor", help="Continue a previous bookmark timeline request.")
 @structured_output_options
 @click.option("--output", "-o", "output_file", type=str, default=None, help="Save tweets to JSON file.")
 @click.option("--filter", "do_filter", is_flag=True, help="Enable score-based filtering.")
 @click.option("--full-text", is_flag=True, help="Show full tweet text in table output.")
 @click.pass_context
-def bookmarks(ctx, max_count, as_json, as_yaml, output_file, do_filter, full_text):
-    # type: (Any, Optional[int], bool, bool, Optional[str], bool, bool) -> None
+def bookmarks(ctx, max_count, cursor, as_json, as_yaml, output_file, do_filter, full_text):
+    # type: (Any, Optional[int], Optional[str], bool, bool, Optional[str], bool, bool) -> None
     """Fetch bookmarked tweets, or manage bookmark folders."""
     if ctx.invoked_subcommand is None:
         _run_bookmarks_command(
@@ -570,6 +574,7 @@ def bookmarks(ctx, max_count, as_json, as_yaml, output_file, do_filter, full_tex
             do_filter,
             compact=ctx.obj.get("compact", False),
             full_text=full_text,
+            cursor=cursor,
         )
 
 
@@ -577,13 +582,14 @@ def bookmarks(ctx, max_count, as_json, as_yaml, output_file, do_filter, full_tex
 @click.argument("folder_id", required=False, default=None)
 @click.option("--max", "-n", "max_count", type=int, default=None, help="Max tweets to fetch from folder.")
 @click.option("--since", type=str, default=None, help="Only show tweets after this date (YYYY-MM-DD).")
+@click.option("--cursor", help="Continue a previous bookmark timeline request.")
 @structured_output_options
 @click.option("--output", "-o", "output_file", type=str, default=None, help="Save tweets to JSON file.")
 @click.option("--filter", "do_filter", is_flag=True, help="Enable score-based filtering.")
 @click.option("--full-text", is_flag=True, help="Show full tweet text in table output.")
 @click.pass_context
-def bookmarks_folders(ctx, folder_id, max_count, since, as_json, as_yaml, output_file, do_filter, full_text):
-    # type: (Any, Optional[str], Optional[int], Optional[str], bool, bool, Optional[str], bool, bool) -> None
+def bookmarks_folders(ctx, folder_id, max_count, since, cursor, as_json, as_yaml, output_file, do_filter, full_text):
+    # type: (Any, Optional[str], Optional[int], Optional[str], Optional[str], bool, bool, Optional[str], bool, bool) -> None
     """List bookmark folders, or fetch tweets from a folder.
 
     \b
@@ -601,11 +607,14 @@ def bookmarks_folders(ctx, folder_id, max_count, since, as_json, as_yaml, output
     do_filter = _inherit_flag(ctx, "do_filter", do_filter)
     full_text = _inherit_flag(ctx, "full_text", full_text)
 
+    cursor = _inherit_option(ctx, "cursor", cursor)
     if folder_id is None:
+        if cursor:
+            raise click.UsageError("--cursor requires a folder ID when listing folder tweets.")
         _run_list_bookmark_folders(as_json, as_yaml, compact, output_file)
     else:
         _run_bookmark_folder_timeline(
-            folder_id, max_count, since, as_json, as_yaml, output_file, do_filter, compact, full_text,
+            folder_id, max_count, since, as_json, as_yaml, output_file, do_filter, compact, full_text, cursor,
         )
 
 
@@ -680,18 +689,21 @@ def _filter_tweets_since(tweets, since_str):
     return filtered
 
 
-def _run_bookmark_folder_timeline(folder_id, max_count, since, as_json, as_yaml, output_file, do_filter, compact, full_text=False):
-    # type: (str, Optional[int], Optional[str], bool, bool, Optional[str], bool, bool, bool) -> None
+def _run_bookmark_folder_timeline(folder_id, max_count, since, as_json, as_yaml, output_file, do_filter, compact, full_text=False, cursor=None):
+    # type: (str, Optional[int], Optional[str], bool, bool, Optional[str], bool, bool, bool, Optional[str]) -> None
     config = load_config()
 
     def _run():
-        client = _get_client(config)
+        rich_output = use_rich_output(as_json=as_json, as_yaml=as_yaml, compact=compact)
+        client = _get_client(config, quiet=not rich_output)
 
         def fetch_fn(count):
-            tweets = client.fetch_bookmark_folder_timeline(folder_id, count)
+            tweets, next_cursor = client.fetch_bookmark_folder_timeline(
+                folder_id, count, cursor=cursor, return_cursor=True,
+            )
             if since:
                 tweets = _filter_tweets_since(tweets, since)
-            return tweets
+            return tweets, next_cursor
 
         _fetch_and_display(
             fetch_fn,
@@ -1004,7 +1016,7 @@ def search(ctx, query, product, from_user, to_user, lang, since, until, has, exc
         rich_output = use_rich_output(as_json=as_json, as_yaml=as_yaml, compact=compact)
         client = _get_client(config, quiet=not rich_output)
         _fetch_and_display(
-            lambda count: client.fetch_search(composed_query, count, product),
+            lambda count: (client.fetch_search(composed_query, count, product), None),
             "'%s' (%s)" % (composed_query, product), "🔍", max_count, as_json, as_yaml, output_file, do_filter, config,
             compact=compact, full_text=full_text,
         )
@@ -1056,7 +1068,7 @@ def likes(ctx, screen_name, max_count, as_json, as_yaml, output_file, do_filter,
             pass  # Don't block the command if whoami fails
 
         _fetch_and_display(
-            lambda count: client.fetch_user_likes(profile.id, count),
+            lambda count: (client.fetch_user_likes(profile.id, count), None),
             "@%s likes" % screen_name, "❤️", max_count, as_json, as_yaml, output_file, do_filter, config,
             compact=compact, full_text=full_text,
         )

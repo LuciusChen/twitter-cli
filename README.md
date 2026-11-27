@@ -114,6 +114,7 @@ twitter feed --json                    # Structured stdout for scripts/agents
 # Bookmarks
 twitter bookmarks
 twitter bookmarks --full-text
+twitter bookmarks --cursor "<nextCursor>" --json
 twitter bookmarks --max 30 --yaml
 
 # Notifications
@@ -501,6 +502,7 @@ twitter feed --cursor "<上一页返回的 nextCursor>"
 # 收藏
 twitter bookmarks
 twitter bookmarks --full-text
+twitter bookmarks --cursor "<nextCursor>" --json
 
 # 通知
 twitter notifications --max 20 --json

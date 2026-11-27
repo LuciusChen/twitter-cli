@@ -617,6 +617,25 @@ def test_cli_bookmark_alias_works(monkeypatch) -> None:
     assert calls == ["123"]
 
 
+@pytest.mark.parametrize("command", [["bookmarks"], ["favorites"], ["bookmarks", "folders", "42"]])
+def test_bookmark_commands_resume_pages(command, monkeypatch, tweet_factory):
+    from unittest.mock import Mock
+    client = Mock()
+    fetch = client.fetch_bookmark_folder_timeline if "folders" in command else client.fetch_bookmarks
+    fetch.return_value = ([tweet_factory("9")], "next")
+    monkeypatch.setattr("twitter_cli.cli._get_client", lambda config, quiet: client)
+    monkeypatch.setattr("twitter_cli.cli.save_tweet_cache", lambda tweets: None)
+
+    result = CliRunner().invoke(cli, [*command, "--cursor", "prev", "--max", "1", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert [row["id"] for row in payload["data"]] == ["9"]
+    assert payload["pagination"] == {"nextCursor": "next"}
+    args = ("42", 1) if "folders" in command else (1,)
+    fetch.assert_called_once_with(*args, cursor="prev", return_cursor=True)
+
+
 def test_cli_bookmarks_folders_inherits_parent_options(monkeypatch) -> None:
     calls = []
 
@@ -630,6 +649,7 @@ def test_cli_bookmarks_folders_inherits_parent_options(monkeypatch) -> None:
         do_filter: bool,
         compact: bool,
         full_text: bool,
+        cursor: str | None,
     ) -> None:
         calls.append(
             (
@@ -642,6 +662,7 @@ def test_cli_bookmarks_folders_inherits_parent_options(monkeypatch) -> None:
                 do_filter,
                 compact,
                 full_text,
+                cursor,
             )
         )
 
@@ -650,11 +671,11 @@ def test_cli_bookmarks_folders_inherits_parent_options(monkeypatch) -> None:
 
     result = runner.invoke(
         cli,
-        ["bookmarks", "--json", "--full-text", "-n", "7", "-o", "root.json", "--filter", "folders", "123"],
+        ["bookmarks", "--cursor", "folder-page", "--json", "--full-text", "-n", "7", "-o", "root.json", "--filter", "folders", "123"],
     )
 
     assert result.exit_code == 0
-    assert calls == [("123", 7, None, True, False, "root.json", True, False, True)]
+    assert calls == [("123", 7, None, True, False, "root.json", True, False, True, "folder-page")]
 
 
 def test_cli_bookmarks_folders_list_inherits_parent_output_options(monkeypatch) -> None:

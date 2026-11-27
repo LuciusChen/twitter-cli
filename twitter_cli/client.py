@@ -260,8 +260,8 @@ class TwitterClient:
             return notifications, next_cursor
         return notifications
 
-    def fetch_bookmarks(self, count=50):
-        # type: (int) -> List[Tweet]
+    def fetch_bookmarks(self, count=50, cursor=None, return_cursor=False):
+        # type: (int, Optional[str], bool) -> Any
         """Fetch bookmarked tweets."""
         def get_instructions(data):
             # type: (Any) -> Any
@@ -270,7 +270,9 @@ class TwitterClient:
                 instructions = _deep_get(data, "data", "bookmark_timeline_v2", "timeline", "instructions")
             return instructions
 
-        return self._fetch_timeline("Bookmarks", count, get_instructions)
+        return self._fetch_timeline(
+            "Bookmarks", count, get_instructions, start_cursor=cursor, return_cursor=return_cursor,
+        )
 
     def fetch_bookmark_folders(self):
         # type: () -> List[BookmarkFolder]
@@ -305,8 +307,8 @@ class TwitterClient:
 
         return folders
 
-    def fetch_bookmark_folder_timeline(self, folder_id, count=50):
-        # type: (str, int) -> List[Tweet]
+    def fetch_bookmark_folder_timeline(self, folder_id, count=50, cursor=None, return_cursor=False):
+        # type: (str, int, Optional[str], bool) -> Any
         """Fetch tweets from a bookmark folder."""
         def get_instructions(data):
             # type: (Any) -> Any
@@ -318,6 +320,8 @@ class TwitterClient:
             "BookmarkFolderTimeline",
             count,
             get_instructions,
+            start_cursor=cursor,
+            return_cursor=return_cursor,
             extra_variables={
                 "bookmark_collection_id": folder_id,
                 "includePromotedContent": False,
@@ -1094,7 +1098,7 @@ class TwitterClient:
                 endpoints like SearchTimeline that Twitter migrated to POST.
         """
         if count <= 0:
-            return []
+            return ([], None) if return_cursor else []
 
         # Enforce max count cap
         count = min(count, self._max_count)
@@ -1102,18 +1106,32 @@ class TwitterClient:
         tweets = []  # type: List[Tweet]
         seen_ids = set()  # type: Set[str]
         cursor = start_cursor  # type: Optional[str]
+        # If X sent more rows than requested, replay that page through the last
+        # returned tweet before consuming its remaining rows.
+        resume_after = None
+        replay_size = None
+        if cursor and cursor.startswith("twitter-cli:page:"):
+            position = re.fullmatch(r"twitter-cli:page:([0-9]{1,2}):([^:]+):(.*)", cursor)
+            if not position or not 1 <= int(position[1]) <= 40:
+                raise InvalidInputError("Invalid timeline continuation cursor")
+            replay_size, resume_after, cursor = int(position[1]), position[2], position[3] or None
         continuation_cursor = None  # type: Optional[str]
         attempts = 0
         max_attempts = int(math.ceil(count / 20.0)) + 2
 
         while len(tweets) < count and attempts < max_attempts:
             attempts += 1
+            # A continuation cursor points past the whole page. Request only what
+            # we can return so a resumed call does not skip the overfetch buffer.
+            remaining = count - len(tweets)
+            page_size = replay_size or min(remaining if return_cursor else remaining + 5, 40)
+            replay_size = None
             variables: Dict[str, Any]
             if override_base_variables:
-                variables = {"count": min(count - len(tweets) + 5, 40)}
+                variables = {"count": page_size}
             else:
                 variables = {
-                    "count": min(count - len(tweets) + 5, 40),
+                    "count": page_size,
                     "includePromotedContent": include_promoted,
                     "latestControlAvailable": True,
                     "requestContext": "launch",
@@ -1130,9 +1148,18 @@ class TwitterClient:
             new_tweets, next_cursor = parse_timeline_response(data, get_instructions)
 
             for tweet in new_tweets:
+                if resume_after is not None:
+                    seen_ids.add(tweet.id)
+                    if tweet.id == resume_after:
+                        resume_after = None
+                    continue
                 if tweet.id and tweet.id not in seen_ids:
+                    if return_cursor and len(tweets) == count:
+                        return tweets, f"twitter-cli:page:{page_size}:{tweets[-1].id}:{cursor or ''}"
                     seen_ids.add(tweet.id)
                     tweets.append(tweet)
+            if resume_after is not None:
+                raise InvalidInputError("The saved timeline position has changed. Restart without --cursor.")
 
             if not next_cursor:
                 continuation_cursor = None
