@@ -53,7 +53,7 @@ from . import __version__
 from .auth import get_cookies
 from .cache import resolve_cached_tweet, save_tweet_cache
 from .exceptions import TwitterError
-from .client import TwitterClient
+from .client import TwitterClient, configured_count_limit
 from .config import load_config
 from .filter import filter_tweets
 from .formatter import (
@@ -1384,6 +1384,8 @@ def _fetch_and_display_users(
             console.print("👤 Fetching @%s's profile..." % screen_name)
         profile = client.fetch_user(screen_name)
         fetch_count = _resolve_configured_count(config, max_count)
+        if max_count is None:
+            fetch_count = min(fetch_count, configured_count_limit(config.get("rateLimit", {})))
         if rich_output:
             console.print("👥 Fetching %s (%d)...\n" % (label, fetch_count))
         start = time.time()

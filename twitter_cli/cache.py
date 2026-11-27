@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import stat
+import tempfile
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from .models import Tweet
 
@@ -17,17 +20,50 @@ _CACHE_FILE = _CACHE_DIR / "last_results.json"
 _TTL = 3600  # seconds
 
 
+def _secure_cache_directory(directory: Path) -> None:
+    if os.name == "posix":
+        mode = directory.lstat().st_mode
+        if not stat.S_ISDIR(mode):
+            raise OSError(f"Expected a cache directory at {directory}")
+        if stat.S_IMODE(mode) != 0o700:
+            directory.chmod(0o700)
+
+
+def read_cache_json(path: Path) -> Any:
+    """Read cached JSON, tightening permissions left by older releases."""
+    _secure_cache_directory(path.parent)
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    with os.fdopen(fd, encoding="utf-8") as stream:
+        if os.name == "posix" and stat.S_IMODE(os.fstat(fd).st_mode) != 0o600:
+            os.fchmod(fd, 0o600)
+        return json.load(stream)
+
+
+def write_cache_json(path: Path, payload: dict) -> None:
+    """Atomically replace cached JSON with a private file."""
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    _secure_cache_directory(path.parent)
+    temporary = tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=path.parent, delete=False,
+    )
+    try:
+        with temporary as stream:
+            json.dump(payload, stream, ensure_ascii=False)
+        os.replace(temporary.name, path)
+    finally:
+        Path(temporary.name).unlink(missing_ok=True)
+
+
 def save_tweet_cache(tweets: List[Tweet]) -> None:
     """Persist tweet list so indices can be resolved by `show`."""
     try:
-        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
         entries = [
             {"index": i + 1, "id": t.id, "author": t.author.screen_name, "text": t.text[:80]}
             for i, t in enumerate(tweets)
             if t.id
         ]
         payload = {"created_at": time.time(), "tweets": entries}
-        _CACHE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_cache_json(_CACHE_FILE, payload)
     except OSError as exc:
         logger.debug("Failed to write tweet cache: %s", exc)
 
@@ -35,9 +71,7 @@ def save_tweet_cache(tweets: List[Tweet]) -> None:
 def _load_cache() -> Optional[List[dict]]:
     """Load and validate the cache file; return tweet entries or None if stale/missing."""
     try:
-        if not _CACHE_FILE.exists():
-            return None
-        payload = json.loads(_CACHE_FILE.read_text(encoding="utf-8"))
+        payload = read_cache_json(_CACHE_FILE)
         if not isinstance(payload, dict):
             return None
         if time.time() - payload.get("created_at", 0) > _TTL:

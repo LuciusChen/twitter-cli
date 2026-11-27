@@ -20,5 +20,8 @@ This file records user-visible changes maintained on the `stable` branch from
 
 ### Fixed
 
+- Followers and following lists honor an explicit `--max` up to 10,000 users.
+- Restrict local cache files and their directory to the current user on POSIX.
+
 - Resume a timeline from the last returned tweet when X sends an oversized page.
 - Require curl_cffi 0.15.0 or later for GHSA-qw2m-4pqf-rmpp.

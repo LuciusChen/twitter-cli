@@ -883,6 +883,26 @@ class TestTweetDetailFetch:
         assert calls[0][1]["listId"] == "list-1"
         assert calls[0][1]["cursor"] == "cursor-prev"
 
+    @pytest.mark.parametrize("method", ["fetch_followers", "fetch_following"])
+    def test_explicit_user_count_crosses_500(self, method, monkeypatch):
+        from urllib.parse import parse_qs, urlsplit
+
+        client = TwitterClient.__new__(TwitterClient)
+        client._max_count = 3
+        client._request_delay = 0
+
+        def page(url):
+            params = parse_qs(urlsplit(url).query)
+            start = max(0, int(params["cursor"][0]))
+            end = start + int(params["count"][0])
+            return {"users": [{"id_str": str(i)} for i in range(start, end)],
+                    "next_cursor_str": str(end)}
+
+        monkeypatch.setattr(client, "_api_get", page)
+        fetch = getattr(client, method)
+        assert len(fetch("1")) == 3
+        assert [u.id for u in fetch("1", 501)] == [str(i) for i in range(501)]
+
     def test_fetch_rest_user_collection_paginates_until_count(self):
         client = TwitterClient.__new__(TwitterClient)
         client._request_delay = 0.0
