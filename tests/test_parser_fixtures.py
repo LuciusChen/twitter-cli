@@ -110,6 +110,21 @@ def test_parse_tweet_detail_fixture_with_nested_items(fixture_loader) -> None:
     assert cursor == "conversation-cursor"
 
 
+def test_parse_thread_continuation_module_items(fixture_loader) -> None:
+    payload = fixture_loader("tweet_detail.json")
+    entries = payload["data"]["threaded_conversation_with_injections_v2"]["instructions"][0]["entries"]
+    reply = entries[0]["content"]["items"][1]
+    legacy = reply["item"]["itemContent"]["tweet_results"]["result"]["legacy"]
+    legacy["in_reply_to_user_id"] = 42
+
+    tweets, cursor = parse_timeline_response(
+        [{"type": "TimelineAddToModule", "moduleItems": [reply]}], lambda data: data,
+    )
+    assert [tweet.id for tweet in tweets] == ["101"]
+    assert tweets[0].in_reply_to_user_id == "42"
+    assert cursor is None
+
+
 def test_parse_search_timeline_fixture_with_module_items(fixture_loader) -> None:
     payload = fixture_loader("search_timeline.json")
 

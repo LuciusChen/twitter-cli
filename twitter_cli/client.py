@@ -581,10 +581,10 @@ class TwitterClient:
             return_cursor=return_cursor,
         )
 
-    def fetch_tweet_detail(self, tweet_id, count=20):
-        # type: (str, int) -> List[Tweet]
+    def fetch_tweet_detail(self, tweet_id, count=20, cursor=None, return_cursor=False):
+        # type: (str, int, Optional[str], bool) -> Any
         """Fetch a tweet and its conversation thread (replies)."""
-        tweets = self._fetch_timeline(
+        result = self._fetch_timeline(
             "TweetDetail",
             count,
             lambda data: _deep_get(data, "data", "tweetResult", "result", "timeline", "instructions")
@@ -601,6 +601,9 @@ class TwitterClient:
                 "withVoice": False,
             },
             override_base_variables=True,
+            start_cursor=cursor,
+            return_cursor=return_cursor,
+            focal_tweet_id=tweet_id,
             field_toggles={
                 "withArticleRichContentState": True,
                 "withArticlePlainText": False,
@@ -608,12 +611,18 @@ class TwitterClient:
                 "withDisallowedReplyControls": False,
             },
         )
-        focal_tweet = next((tweet for tweet in tweets if tweet.id == tweet_id), None)
-        if focal_tweet is None:
-            raise NotFoundError(
-                "Tweet %s was not returned by the TweetDetail response" % tweet_id
-            )
-        return [focal_tweet] + [tweet for tweet in tweets if tweet.id != tweet_id]
+        tweets = result[0] if return_cursor else result
+        if not cursor and (not tweets or tweets[0].id != tweet_id):
+            # A sparse first page can put the focal tweet on a later API page.
+            for index, tweet in enumerate(tweets):
+                if tweet.id == tweet_id:
+                    tweets.insert(0, tweets.pop(index))
+                    break
+            else:
+                raise NotFoundError(
+                    "Tweet %s was not returned by the TweetDetail response" % tweet_id
+                )
+        return result
 
     def translate_tweet(self, tweet_id, destination_language):
         # type: (str, str) -> Dict[str, Any]
@@ -1086,8 +1095,8 @@ class TwitterClient:
 
     # ── Internal: timeline / user list fetchers ──────────────────────
 
-    def _fetch_timeline(self, operation_name, count, get_instructions, extra_variables=None, override_base_variables=False, field_toggles=None, use_post=False, include_promoted=False, start_cursor=None, return_cursor=False):
-        # type: (str, int, Callable[[Any], Any], Optional[Dict[str, Any]], bool, Optional[Dict[str, Any]], bool, bool, Optional[str], bool) -> Any
+    def _fetch_timeline(self, operation_name, count, get_instructions, extra_variables=None, override_base_variables=False, field_toggles=None, use_post=False, include_promoted=False, start_cursor=None, return_cursor=False, focal_tweet_id=None):
+        # type: (str, int, Callable[[Any], Any], Optional[Dict[str, Any]], bool, Optional[Dict[str, Any]], bool, bool, Optional[str], bool, Optional[str]) -> Any
         """Generic timeline fetcher with pagination and deduplication.
 
         Args:
@@ -1115,6 +1124,8 @@ class TwitterClient:
             if not position or not 1 <= int(position[1]) <= 40:
                 raise InvalidInputError("Invalid timeline continuation cursor")
             replay_size, resume_after, cursor = int(position[1]), position[2], position[3] or None
+        if cursor and focal_tweet_id:
+            seen_ids.add(focal_tweet_id)
         continuation_cursor = None  # type: Optional[str]
         attempts = 0
         max_attempts = int(math.ceil(count / 20.0)) + 2
@@ -1146,6 +1157,11 @@ class TwitterClient:
             else:
                 data = self._graphql_get(operation_name, variables, FEATURES, field_toggles=field_toggles)
             new_tweets, next_cursor = parse_timeline_response(data, get_instructions)
+
+            if focal_tweet_id and not cursor:
+                # Thread pages may start with ancestors. Put the requested tweet first
+                # before applying --max, including when replaying an oversized page.
+                new_tweets.sort(key=lambda tweet: tweet.id != focal_tweet_id)
 
             for tweet in new_tweets:
                 if resume_after is not None:

@@ -96,7 +96,13 @@ data:
   conversationId: "2039306742803370051"
   inReplyToStatusId: "2039306742803370051"
   inReplyToScreenName: "DashHuang"
+  inReplyToUserId: "123456789"
 ```
+
+For `tweet`, the first page starts with the requested tweet. When
+`pagination.nextCursor` is present, pass it to `tweet <same-id> --cursor <cursor>`
+to read more of the conversation. A continuation can include ancestors and replies.
+The cursor covers the timeline returned by X. Other reply branches may exist.
 
 ## User Fields
 

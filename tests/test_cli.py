@@ -426,10 +426,14 @@ def test_cli_user_error_yaml(monkeypatch) -> None:
 
 def test_cli_tweet_accepts_shared_url_with_query(monkeypatch, tweet_factory) -> None:
     class FakeClient:
-        def fetch_tweet_detail(self, tweet_id: str, max_count: int):
+        def fetch_tweet_detail(self, tweet_id, max_count, *, cursor, return_cursor):
             assert tweet_id == "12345"
             assert max_count == 50
-            return [tweet_factory("12345")]
+            assert return_cursor is True
+            if cursor is None:
+                return [tweet_factory("12345")], "replies"
+            assert cursor == "replies"
+            return [tweet_factory("56789")], None
 
     monkeypatch.setattr("twitter_cli.cli._get_client", lambda config=None, quiet=False: FakeClient())
     monkeypatch.setattr(
@@ -438,16 +442,23 @@ def test_cli_tweet_accepts_shared_url_with_query(monkeypatch, tweet_factory) -> 
     )
     runner = CliRunner()
 
-    result = runner.invoke(cli, ["tweet", "https://x.com/user/status/12345?s=20"])
+    result = runner.invoke(cli, ["tweet", "https://x.com/user/status/12345?s=20", "--json"])
 
     assert result.exit_code == 0
+    first = json.loads(result.output)
+    assert [tweet["id"] for tweet in first["data"]] == ["12345"]
+    result = runner.invoke(cli, ["tweet", "12345", "--cursor", first["pagination"]["nextCursor"], "--yaml"])
+    assert result.exit_code == 0
+    last = yaml.safe_load(result.output)
+    assert [tweet["id"] for tweet in last["data"]] == ["56789"]
+    assert "pagination" not in last
 
 
 def test_cli_tweet_reports_missing_focal_tweet_as_structured_error(monkeypatch) -> None:
     from twitter_cli.exceptions import NotFoundError
 
     class FakeClient:
-        def fetch_tweet_detail(self, tweet_id: str, max_count: int):
+        def fetch_tweet_detail(self, tweet_id, max_count, *, cursor, return_cursor):
             raise NotFoundError(
                 "Tweet %s was not returned by the TweetDetail response" % tweet_id
             )

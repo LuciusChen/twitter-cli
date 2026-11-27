@@ -1077,12 +1077,13 @@ def likes(ctx, screen_name, max_count, as_json, as_yaml, output_file, do_filter,
 
 @cli.command()
 @click.argument("tweet_id")
-@click.option("--max", "-n", "max_count", type=int, default=None, help="Max replies to fetch.")
+@click.option("--max", "-n", "max_count", type=int, default=None, help="Max tweets to return, including the requested tweet on the first page.")
 @click.option("--full-text", is_flag=True, help="Show full reply text in table output.")
+@click.option("--cursor", help="Continue a previous request for this thread.")
 @structured_output_options
 @click.pass_context
-def tweet(ctx, tweet_id, max_count, full_text, as_json, as_yaml):
-    # type: (Any, str, int, bool, bool, bool) -> None
+def tweet(ctx, tweet_id, max_count, full_text, as_json, as_yaml, cursor):
+    # type: (Any, str, Optional[int], bool, bool, bool, Optional[str]) -> None
     """View a tweet and its replies. TWEET_ID is the numeric tweet ID or full URL."""
     compact = ctx.obj.get("compact", False)
     tweet_id = _normalize_tweet_id(tweet_id)
@@ -1093,31 +1094,36 @@ def tweet(ctx, tweet_id, max_count, full_text, as_json, as_yaml):
         if rich_output:
             console.print("🐦 Fetching tweet %s...\n" % tweet_id)
         start = time.time()
-        tweets = client.fetch_tweet_detail(tweet_id, _resolve_configured_count(config, max_count))
+        tweets, next_cursor = client.fetch_tweet_detail(
+            tweet_id, _resolve_configured_count(config, max_count), cursor=cursor, return_cursor=True,
+        )
         elapsed = time.time() - start
         if rich_output:
             console.print("✅ Fetched %d tweets in %.1fs\n" % (len(tweets), elapsed))
     except (TwitterError, RuntimeError) as exc:
         _exit_with_error(exc)
 
-    _emit_tweet_detail(tweets, compact=compact, as_json=as_json, as_yaml=as_yaml, full_text=full_text)
+    _emit_tweet_detail(
+        tweets, compact, as_json, as_yaml, full_text, next_cursor=next_cursor, continuation=bool(cursor),
+    )
 
 
-def _emit_tweet_detail(tweets, compact, as_json, as_yaml, full_text):
-    # type: (list, bool, bool, bool, bool) -> None
+def _emit_tweet_detail(tweets, compact, as_json, as_yaml, full_text, next_cursor=None, continuation=False):
+    # type: (list, bool, bool, bool, bool, Optional[str], bool) -> None
     """Render tweet detail + replies in the requested output format."""
     if compact:
         click.echo(tweets_to_compact_json(tweets))
         return
 
-    if emit_structured(tweets_to_data(tweets), as_json=as_json, as_yaml=as_yaml):
+    if _emit_timeline_structured(tweets, next_cursor, as_json=as_json, as_yaml=as_yaml):
         return
 
-    if tweets:
+    replies = tweets if continuation else tweets[1:]
+    if tweets and not continuation:
         print_tweet_detail(tweets[0], console)
-        if len(tweets) > 1:
-            console.print("\n💬 Replies:")
-            print_tweet_table(tweets[1:], console, title="💬 Replies — %d" % (len(tweets) - 1), full_text=full_text)
+    if replies:
+        console.print("\n💬 Replies:")
+        print_tweet_table(replies, console, title="💬 Replies — %d" % len(replies), full_text=full_text)
     console.print()
 
 

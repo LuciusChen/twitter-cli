@@ -135,6 +135,7 @@ twitter search "trending" --filter              # Apply ranking filter
 # Tweet detail (view tweet + replies)
 twitter tweet 1234567890
 twitter tweet 1234567890 --full-text
+twitter tweet 1234567890 --json --cursor "<nextCursor>"
 twitter tweet https://x.com/user/status/1234567890
 
 # Tweet translation
@@ -519,6 +520,7 @@ twitter search "trending" --filter              # 启用排序筛选
 # 推文详情
 twitter tweet 1234567890
 twitter tweet 1234567890 --full-text
+twitter tweet 1234567890 --json --cursor "<nextCursor>"
 
 # 推文翻译
 twitter translate 1234567890 --to zh

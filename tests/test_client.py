@@ -713,6 +713,7 @@ class TestTweetDetailFetch:
             include_promoted=False,
             start_cursor=None,
             return_cursor=False,
+            focal_tweet_id=None,
         ):
             captured.update(
                 operation_name=operation_name,
@@ -757,6 +758,29 @@ class TestTweetDetailFetch:
         tweets = client.fetch_tweet_detail("123", 20)
 
         assert tweets == [focal_tweet, reply]
+
+    def test_tweet_detail_resumes_with_ancestors_and_repeated_focal(self, monkeypatch, tweet_factory):
+        client = TwitterClient.__new__(TwitterClient)
+        client._max_count = 200
+        client._request_delay = 0
+        ancestor, focal, reply, last = [tweet_factory(str(i)) for i in range(4)]
+
+        def get_page(operation, variables, features, field_toggles=None):
+            if variables.get("cursor") == "more":
+                return [focal, last], None
+            return [ancestor, focal, reply], "more"
+
+        monkeypatch.setattr(client, "_graphql_get", get_page)
+        monkeypatch.setattr("twitter_cli.client.parse_timeline_response", lambda page, extract: page)
+
+        first, cursor = client.fetch_tweet_detail(focal.id, 1, return_cursor=True)
+        assert first == [focal]
+        second, cursor = client.fetch_tweet_detail(focal.id, 2, cursor=cursor, return_cursor=True)
+        assert second == [ancestor, reply]
+        assert cursor == "more"
+        third, cursor = client.fetch_tweet_detail(focal.id, 2, cursor=cursor, return_cursor=True)
+        assert third == [last]
+        assert cursor is None
 
     def test_continues_when_cursor_advances_without_new_tweets(self):
         client = TwitterClient.__new__(TwitterClient)

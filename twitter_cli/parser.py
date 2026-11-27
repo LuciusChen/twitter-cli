@@ -601,6 +601,7 @@ def parse_tweet_result(result, depth=0):
     # Prefer note_tweet full text for long tweets ("Show More")
     note_text = _deep_get(actual_data, "note_tweet", "note_tweet_results", "result", "text")
 
+    reply_user_id = actual_legacy.get("in_reply_to_user_id_str") or actual_legacy.get("in_reply_to_user_id")
     return Tweet(
         id=actual_data.get("rest_id", ""),
         text=note_text or actual_legacy.get("full_text", ""),
@@ -619,6 +620,7 @@ def parse_tweet_result(result, depth=0):
         conversation_id=actual_legacy.get("conversation_id_str") or actual_legacy.get("conversation_id"),
         in_reply_to_status_id=actual_legacy.get("in_reply_to_status_id_str")
         or actual_legacy.get("in_reply_to_status_id"),
+        in_reply_to_user_id=str(reply_user_id) if reply_user_id is not None else None,
         in_reply_to_screen_name=actual_legacy.get("in_reply_to_screen_name"),
         is_retweet=is_retweet,
         retweeted_by=retweeted_by,
@@ -649,7 +651,7 @@ def parse_timeline_response(data, get_instructions):
     for instruction in instructions:
         entries = instruction.get("entries") or instruction.get("moduleItems") or []
         for entry in entries:
-            content = entry.get("content", {})
+            content = entry.get("content") or entry.get("item") or {}
             next_cursor = _extract_cursor(content) or next_cursor
 
             item_content = content.get("itemContent", {})
