@@ -453,6 +453,19 @@ class TestStaleQueryRetry:
         assert requests[1][2]["queryId"] == "live-query-id"
         invalidate.assert_called_once_with("CreateTweet")
 
+    def test_bookmark_does_not_repeat_post_if_query_id_is_unchanged(self):
+        client = TwitterClient.__new__(TwitterClient)
+        error = TwitterAPIError(404, "Not Found")
+        client._api_request = MagicMock(side_effect=error)
+        query_id = FALLBACK_QUERY_IDS["CreateBookmark"]
+
+        with patch("twitter_cli.client._resolve_query_id", return_value=query_id):
+            with pytest.raises(TwitterAPIError) as raised:
+                client.bookmark_tweet("42")
+
+        assert raised.value is error
+        client._api_request.assert_called_once()
+
     def test_graphql_get_does_not_retry_unrelated_status_zero_error(self):
         client = TwitterClient.__new__(TwitterClient)
         fallback = FALLBACK_QUERY_IDS["HomeTimeline"]
