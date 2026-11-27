@@ -644,6 +644,39 @@ class TestBuildHeaders:
 
 
 class TestPaginationBehavior:
+    @pytest.mark.parametrize("minimum_page_size", [1, 4])
+    def test_bookmark_pages_resume_without_skipping(self, minimum_page_size, monkeypatch, tweet_factory):
+        client = TwitterClient.__new__(TwitterClient)
+        client._request_delay = 0
+        client._max_count = 200
+        items = [tweet_factory(str(i)) for i in range(9)]
+
+        def get_page(operation, variables, features, field_toggles=None):
+            assert operation == "Bookmarks"
+            offset = int(variables.get("cursor", 0))
+            end = offset + max(minimum_page_size, variables["count"])
+            return items[offset:end], str(end) if end < len(items) else None
+
+        monkeypatch.setattr(client, "_graphql_get", get_page)
+        monkeypatch.setattr("twitter_cli.client.parse_timeline_response", lambda page, extract: page)
+        assert client.fetch_bookmarks(0, return_cursor=True) == ([], None)
+        assert client.fetch_bookmarks(2) == items[:2]
+        cursor = None
+        received = []
+        for limit in (2, 1, 3, 3):
+            page, cursor = client.fetch_bookmarks(limit, cursor=cursor, return_cursor=True)
+            assert len(page) == limit
+            received.extend(page)
+        assert received == items
+        assert cursor is None
+
+    def test_changed_bookmark_page_reports_expired_position(self, monkeypatch):
+        client = TwitterClient.__new__(TwitterClient)
+        client._max_count = 200
+        monkeypatch.setattr(client, "_graphql_get", MagicMock(return_value={}))
+        with pytest.raises(InvalidInputError, match="Restart without --cursor"):
+            client.fetch_bookmarks(1, cursor="twitter-cli:page:1:removed:", return_cursor=True)
+
     def test_fetch_timeline_can_include_promoted_content(self):
         client = TwitterClient.__new__(TwitterClient)
         client._request_delay = 0.0

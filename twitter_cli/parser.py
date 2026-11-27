@@ -60,48 +60,55 @@ def _extract_cursor(content):
 # ── Media / Author extraction ────────────────────────────────────────────
 
 
+def _media_warnings(item: dict) -> set[str]:
+    """Collect positive warning labels from the media entity and its nested result."""
+    nested = item.get("media_results") or item.get("mediaResults") or {}
+    sources = (item, nested.get("result", nested) if isinstance(nested, dict) else None)
+    labels: set[str] = set()
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        for key in ("ext_sensitive_media_warning", "sensitive_media_warning",
+                    "extSensitiveMediaWarning", "sensitiveMediaWarning"):
+            warning = source.get(key)
+            if isinstance(warning, dict):
+                labels.update(
+                    name.replace("_", "").replace("-", "").lower()
+                    for name, value in warning.items() if value in (True, "true", "True")
+                )
+    return labels
+
+
 def _extract_media(legacy):
     # type: (Dict[str, Any]) -> List[TweetMedia]
     """Extract media items from tweet legacy data."""
     media = []  # type: List[TweetMedia]
-    for media_item in _deep_get(legacy, "extended_entities", "media") or []:
-        media_type = media_item.get("type", "")
-        alt_text = str(
-            media_item.get("ext_alt_text")
-            or media_item.get("alt_text")
-            or media_item.get("altText")
-            or ""
-        )
-        if media_type == "photo":
-            media.append(
-                TweetMedia(
-                    type="photo",
-                    url=media_item.get("media_url_https", ""),
-                    width=_deep_get(media_item, "original_info", "width"),
-                    height=_deep_get(media_item, "original_info", "height"),
-                    alt_text=alt_text,
-                )
-            )
-        elif media_type in {"video", "animated_gif"}:
-            variants = media_item.get("video_info", {}).get("variants", [])
-            mp4_variants = [v for v in variants if v.get("content_type") == "video/mp4"]
-            mp4_variants.sort(key=lambda v: v.get("bitrate", 0), reverse=True)
-            media.append(
-                TweetMedia(
-                    type=media_type,
-                    url=mp4_variants[0]["url"] if mp4_variants else media_item.get("media_url_https", ""),
-                    preview_url=media_item.get("media_url_https", ""),
-                    width=_deep_get(media_item, "original_info", "width"),
-                    height=_deep_get(media_item, "original_info", "height"),
-                    alt_text=alt_text,
-                    variants=[
-                        MediaVariant(url=variant.get("url", ""),
-                                     bitrate=variant.get("bitrate"))
-                        for variant in mp4_variants
-                        if variant.get("url")
-                    ],
-                )
-            )
+    for item in _deep_get(legacy, "extended_entities", "media") or []:
+        media_type = item.get("type")
+        if media_type not in {"photo", "video", "animated_gif"}:
+            continue
+        image_url = item.get("media_url_https", "")
+        warnings = _media_warnings(item)
+        variants = []
+        if media_type != "photo":
+            variants = [
+                MediaVariant(url=v["url"], bitrate=v.get("bitrate"))
+                for v in _deep_get(item, "video_info", "variants") or []
+                if v.get("content_type") == "video/mp4" and v.get("url")
+            ]
+            variants.sort(key=lambda v: v.bitrate or 0, reverse=True)
+        media.append(TweetMedia(
+            type=media_type,
+            url=variants[0].url if variants else image_url,
+            preview_url=image_url if media_type != "photo" else "",
+            width=_deep_get(item, "original_info", "width"),
+            height=_deep_get(item, "original_info", "height"),
+            alt_text=str(item.get("ext_alt_text") or item.get("alt_text") or item.get("altText") or ""),
+            variants=variants,
+            adult_content="adultcontent" in warnings,
+            graphic_violence="graphicviolence" in warnings,
+            other_warning=bool(warnings.intersection(("other", "otherwarning"))),
+        ))
     return media
 
 
@@ -618,6 +625,9 @@ def parse_tweet_result(result, depth=0):
         quoted_tweet=quoted_tweet,
         lang=actual_legacy.get("lang", ""),
         is_subscriber_only=(is_subscriber_only or retweet_subscriber_only) if is_retweet else is_subscriber_only,
+        possibly_sensitive=actual_legacy.get(
+            "possibly_sensitive", actual_legacy.get("possiblySensitive")
+        ) in (True, "true", "True"),
         **_parse_article(actual_data),
     )
 

@@ -50,6 +50,9 @@ def tweet_to_dict(tweet: Tweet) -> Dict[str, Any]:
                 "width": media.width,
                 "height": media.height,
                 "altText": media.alt_text,
+                "adultContent": media.adult_content,
+                "graphicViolence": media.graphic_violence,
+                "otherWarning": media.other_warning,
                 "variants": [
                     {
                         "url": variant.url,
@@ -70,6 +73,7 @@ def tweet_to_dict(tweet: Tweet) -> Dict[str, Any]:
         "score": tweet.score,
         "isSubscriberOnly": tweet.is_subscriber_only,
         "isPromoted": tweet.is_promoted,
+        "possiblySensitive": tweet.possibly_sensitive,
     }
     if tweet.article_title is not None:
         data["articleTitle"] = tweet.article_title
@@ -78,6 +82,7 @@ def tweet_to_dict(tweet: Tweet) -> Dict[str, Any]:
     if tweet.quoted_tweet:
         data["quotedTweet"] = {
             "id": tweet.quoted_tweet.id,
+            "possiblySensitive": tweet.quoted_tweet.possibly_sensitive,
             "text": tweet.quoted_tweet.text,
             "author": {
                 "screenName": tweet.quoted_tweet.author.screen_name,
@@ -99,6 +104,7 @@ def tweet_from_dict(data: Dict[str, Any]) -> Tweet:
         quoted_author = quoted_data.get("author") or {}
         quoted_tweet = Tweet(
             id=str(quoted_data.get("id") or ""),
+            possibly_sensitive=bool(quoted_data.get("possiblySensitive")),
             text=str(quoted_data.get("text") or ""),
             author=Author(
                 id="",
@@ -132,6 +138,9 @@ def tweet_from_dict(data: Dict[str, Any]) -> Tweet:
             TweetMedia(
                 type=str(item.get("type") or ""),
                 url=str(item.get("url") or ""),
+                adult_content=bool(item.get("adultContent")),
+                graphic_violence=bool(item.get("graphicViolence")),
+                other_warning=bool(item.get("otherWarning")),
                 preview_url=str(item.get("previewUrl") or item.get("preview_url") or ""),
                 width=_optional_int(item.get("width")),
                 height=_optional_int(item.get("height")),
@@ -167,6 +176,7 @@ def tweet_from_dict(data: Dict[str, Any]) -> Tweet:
         article_text=_optional_str(data.get("articleText")),
         is_subscriber_only=bool(data.get("isSubscriberOnly", False)),
         is_promoted=bool(data.get("isPromoted", False)),
+        possibly_sensitive=bool(data.get("possiblySensitive")),
     )
 
 

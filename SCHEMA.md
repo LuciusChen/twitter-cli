@@ -28,13 +28,21 @@ error:
 - non-TTY stdout defaults to YAML
 - tweet and user lists are returned under `data`
 - `lists` returns owned and followed list metadata under `data`
-- timeline-style list commands may also return `pagination.nextCursor`
+- Timeline commands, including `bookmarks`, `favorites`, and `bookmarks folders <id>`,
+  may return `pagination.nextCursor`. Pass its value unchanged to the same timeline
+  with `--cursor` to continue.
 - `article` returns a single tweet object under `data`
 - `status` returns `data.authenticated` plus `data.user`
 - `whoami` returns `data.user`
 - `user-posts --cursor ...` returns tweets under `data` and may include `pagination.nextCursor`
 - `notifications` returns account activity under `data` and may include `pagination.nextCursor`
 - write commands also support explicit `--json` / `--yaml`
+
+## Sensitive media
+
+Structured tweet data includes `possiblySensitive` on tweets and quoted tweets.
+Each media item includes `adultContent`, `graphicViolence`, and `otherWarning`.
+A false value means X supplied no positive flag for that field.
 
 ## Notification Fields
 

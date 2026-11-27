@@ -12,6 +12,8 @@ def test_tweet_roundtrip_dict(tweet_factory) -> None:
     assert restored.id == tweet.id
     assert restored.author.screen_name == tweet.author.screen_name
     assert restored.metrics.likes == tweet.metrics.likes
+    assert payload["possiblySensitive"] is False
+    assert restored.possibly_sensitive is False
 
 
 def test_tweets_json_roundtrip(tweet_factory) -> None:
@@ -146,3 +148,37 @@ def test_tweet_roundtrip_preserves_reply_metadata(tweet_factory) -> None:
     assert restored.conversation_id == "100"
     assert restored.in_reply_to_status_id == "100"
     assert restored.in_reply_to_screen_name == "dashhuang"
+
+
+def test_tweet_roundtrip_preserves_sensitive_media(tweet_factory) -> None:
+    quoted = tweet_factory("101", possibly_sensitive=True)
+    tweet = tweet_factory(
+        "100",
+        possibly_sensitive=True,
+        quoted_tweet=quoted,
+        media=[
+            TweetMedia(
+                type="photo",
+                url="https://pbs.twimg.com/media/example.jpg",
+                width=10,
+                height=10,
+                adult_content=True,
+                graphic_violence=True,
+                other_warning=False,
+            )
+        ],
+    )
+    payload = tweet_to_dict(tweet)
+    assert payload["possiblySensitive"] is True
+    assert payload["quotedTweet"]["possiblySensitive"] is True
+    assert payload["media"][0]["adultContent"] is True
+    assert payload["media"][0]["graphicViolence"] is True
+    assert payload["media"][0]["otherWarning"] is False
+
+    restored = tweet_from_dict(payload)
+    assert restored.possibly_sensitive is True
+    assert restored.quoted_tweet is not None
+    assert restored.quoted_tweet.possibly_sensitive is True
+    assert restored.media[0].adult_content is True
+    assert restored.media[0].graphic_violence is True
+    assert restored.media[0].other_warning is False

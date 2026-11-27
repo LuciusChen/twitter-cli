@@ -43,6 +43,9 @@ class TweetMedia:
     height: Optional[int] = None
     variants: List[MediaVariant] = field(default_factory=list)
     alt_text: str = ""
+    adult_content: bool = False
+    graphic_violence: bool = False
+    other_warning: bool = False
 
 
 @dataclass
@@ -66,6 +69,7 @@ class Tweet:
     article_text: Optional[str] = None
     is_subscriber_only: bool = False
     is_promoted: bool = False
+    possibly_sensitive: bool = False
 
 
 @dataclass

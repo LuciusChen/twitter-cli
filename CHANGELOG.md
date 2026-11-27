@@ -12,3 +12,11 @@ This file records user-visible changes maintained on the `stable` branch from
 - `twitter notifications` for account activity including mentions, replies,
   quotes, likes, follows, and reposts.
 - `twitter users <query>` for user typeahead search.
+- Bookmark timelines, including individual folders, accept `--cursor` and
+  expose the continuation in structured output.
+- Structured tweets and media include X's sensitive-content labels.
+
+### Fixed
+
+- Resume a timeline from the last returned tweet when X sends an oversized page.
+- Require curl_cffi 0.15.0 or later for GHSA-qw2m-4pqf-rmpp.
