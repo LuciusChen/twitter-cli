@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
+
+import pytest
 import time
 
 
@@ -99,3 +103,24 @@ class TestCacheEdgeCases:
         tweet_id, size = resolve_cached_tweet(1)
         assert tweet_id is None
         assert size == 0
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX mode bits")
+def test_migrate_and_replace_private_cache(tmp_path):
+    from twitter_cli.cache import read_cache_json, write_cache_json
+
+    directory = tmp_path / ".twitter-cli"
+    directory.mkdir()
+    directory.chmod(0o755)
+    path = directory / "transaction_cache.json"
+    path.write_text('{"generation": 1}')
+    path.chmod(0o644)
+    assert read_cache_json(path) == {"generation": 1}
+    assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    with pytest.raises(TypeError):
+        write_cache_json(path, {"invalid": object()})
+    assert read_cache_json(path) == {"generation": 1}
+    write_cache_json(path, {"generation": 2})
+    assert read_cache_json(path) == {"generation": 2}
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert list(directory.iterdir()) == [path]

@@ -20,5 +20,7 @@ This file records user-visible changes maintained on the `stable` branch from
 
 ### Fixed
 
+- Restrict local cache files and their directory to the current user on POSIX.
+
 - Resume a timeline from the last returned tweet when X sends an oversized page.
 - Require curl_cffi 0.15.0 or later for GHSA-qw2m-4pqf-rmpp.

@@ -11,6 +11,7 @@ import random
 import re
 import time
 import urllib.parse
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, cast
 
 import bs4
@@ -18,6 +19,7 @@ from curl_cffi import requests as _cffi_requests
 from x_client_transaction import ClientTransaction
 from x_client_transaction.utils import generate_headers as _gen_ct_headers, get_ondemand_file_url
 
+from .cache import read_cache_json, write_cache_json
 from .constants import (
     BEARER_TOKEN,
     SEC_CH_UA_BITNESS,
@@ -1484,10 +1486,7 @@ class TwitterClient:
         """Try to load ClientTransaction from cache.  Returns True on success."""
         try:
             cache_path = self._ct_cache_path()
-            if not os.path.exists(cache_path):
-                return False
-            with open(cache_path, "r", encoding="utf-8") as f:
-                cache = json.load(f)
+            cache = read_cache_json(Path(cache_path))
             # Check TTL (1 hour)
             if time.time() - cache.get("created_at", 0) > 3600:
                 return False
@@ -1512,15 +1511,12 @@ class TwitterClient:
         """Save transaction data to cache file."""
         try:
             cache_path = self._ct_cache_path()
-            cache_dir = os.path.dirname(cache_path)
-            os.makedirs(cache_dir, exist_ok=True)
             cache = {
                 "home_html": home_html,
                 "ondemand_text": ondemand_text,
                 "created_at": time.time(),
             }
-            with open(cache_path, "w", encoding="utf-8") as f:
-                json.dump(cache, f)
+            write_cache_json(Path(cache_path), cache)
             logger.debug("Saved CT cache to %s", cache_path)
         except Exception as exc:
             logger.debug("Failed to save CT cache: %s", exc)
